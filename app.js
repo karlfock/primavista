@@ -1,7 +1,6 @@
 // --- Pitch range (see SPEC.md) ---------------------------------------
-const MIN_MIDI_NOTE = 36; // C2
+const MIN_MIDI_NOTE = 21; // A0 — lowest note on a standard piano
 const MAX_MIDI_NOTE = 96; // C7
-const MIDDLE_C = 60;
 
 // Natural (white-key) pitch classes only — no accidentals in v1.
 const NATURAL_PITCH_CLASSES = { 0: 'c', 2: 'd', 4: 'e', 5: 'f', 7: 'g', 9: 'a', 11: 'b' };
@@ -24,8 +23,14 @@ function midiToVexKey(midi) {
   return `${letter}/${octave}`;
 }
 
-function clefForMidi(midi) {
-  return midi >= MIDDLE_C ? 'treble' : 'bass';
+// Notes in this zone can be notated in either clef — see SPEC.md v2.
+const AMBIGUITY_LOW = 48; // C3
+const AMBIGUITY_HIGH = 72; // C5
+
+function chooseClef(midi) {
+  if (midi < AMBIGUITY_LOW) return 'bass';
+  if (midi > AMBIGUITY_HIGH) return 'treble';
+  return Math.random() < 0.5 ? 'treble' : 'bass';
 }
 
 const NOTE_RANGE = buildNoteRange(MIN_MIDI_NOTE, MAX_MIDI_NOTE);
@@ -42,6 +47,7 @@ function pickRandomNote(exclude) {
 // --- App state ---------------------------------------------------------
 const state = {
   targetMidi: null,
+  targetClef: null,
   noteStartTime: null,
   missedThisNote: false,
   stats: {
@@ -55,7 +61,7 @@ const state = {
 const STAFF_WIDTH = 380;
 const STAFF_HEIGHT = 330;
 
-function renderStaff(targetMidi) {
+function renderStaff(targetMidi, clef) {
   const container = document.getElementById('staff');
   container.innerHTML = '';
 
@@ -82,7 +88,6 @@ function renderStaff(targetMidi) {
     .setContext(context)
     .draw();
 
-  const clef = clefForMidi(targetMidi);
   const targetStave = clef === 'treble' ? trebleStave : bassStave;
   const key = midiToVexKey(targetMidi);
 
@@ -130,10 +135,11 @@ function updateStatsDisplay() {
 // --- Core loop ---------------------------------------------------------
 function nextNote() {
   state.targetMidi = pickRandomNote(state.targetMidi);
+  state.targetClef = chooseClef(state.targetMidi);
   state.noteStartTime = Date.now();
   state.missedThisNote = false;
   state.stats.attempts += 1;
-  renderStaff(state.targetMidi);
+  renderStaff(state.targetMidi, state.targetClef);
   updateStatsDisplay();
 }
 
@@ -234,3 +240,23 @@ async function initMIDI() {
 // --- Boot ---------------------------------------------------------
 initMIDI();
 nextNote();
+
+// Exposed for the Playwright suite (tests/app.spec.js). This is a plain
+// script with no module system, so `const`/`let` bindings above aren't
+// reachable from outside — namespacing the ones tests need here is simpler
+// than converting the app to modules for an MVP this size.
+window.__primavista = {
+  state,
+  NOTE_RANGE,
+  MIN_MIDI_NOTE,
+  MAX_MIDI_NOTE,
+  AMBIGUITY_LOW,
+  AMBIGUITY_HIGH,
+  STAFF_WIDTH,
+  STAFF_HEIGHT,
+  isNaturalMidiNote,
+  midiToVexKey,
+  chooseClef,
+  renderStaff,
+  onNoteOn,
+};

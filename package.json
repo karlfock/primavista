@@ -4,6 +4,11 @@
   "private": true,
   "description": "Note-reading trainer: match a random note on a grand staff by playing it on a connected MIDI keyboard.",
   "scripts": {
-    "start": "npx --yes serve ."
+    "start": "npx --yes serve .",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
   }
 }

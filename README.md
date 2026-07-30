@@ -12,6 +12,18 @@ npm start
 
 (runs `npx serve .`; any static file server works, e.g. `python3 -m http.server 8934`). Then open the printed local URL.
 
+## Tests
+
+End-to-end tests (Playwright) live in `tests/` and drive the app in a real browser — pitch range, clef-selection logic, correct/incorrect handling, stats, and MIDI-permission states. `app.js` exposes its internal functions/state under `window.__primavista` for the tests to reach into, since it's a plain script with no module system.
+
+```
+npm install
+npx playwright install chromium   # once, downloads the test browser
+npm test
+```
+
+`npm test` starts a local server and runs headless automatically; no need to run `npm start` first. Use `npm run test:ui` for Playwright's interactive UI mode while debugging.
+
 ## Browser support
 
 Web MIDI is supported in Chrome, Edge, and other Chromium-based browsers. It is **not** supported in Safari or Firefox without flags.
