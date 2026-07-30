@@ -1,0 +1,9 @@
+{
+  "name": "primavista",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Note-reading trainer: match a random note on a grand staff by playing it on a connected MIDI keyboard.",
+  "scripts": {
+    "start": "npx --yes serve ."
+  }
+}

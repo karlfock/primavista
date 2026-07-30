@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PrimaVista — Note Reading Trainer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>PrimaVista</h1>
+  <p class="tagline">Sight-reading drill: name the note, play the key.</p>
+</header>
+
+<main>
+  <section class="midi-panel">
+    <label for="midi-device">MIDI input</label>
+    <select id="midi-device" disabled>
+      <option value="">No devices found</option>
+    </select>
+    <span id="midi-status" class="status">Requesting MIDI access…</span>
+  </section>
+
+  <section id="staff-panel" class="staff-panel">
+    <div id="flash-overlay" class="flash-overlay"></div>
+    <div id="staff"></div>
+  </section>
+
+  <section class="stats-panel">
+    <div class="stat">
+      <span class="stat-value" id="stat-attempts">0</span>
+      <span class="stat-label">Attempts</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-correct">0</span>
+      <span class="stat-label">Correct (1st try)</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-accuracy">—</span>
+      <span class="stat-label">Accuracy</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" id="stat-avg-time">—</span>
+      <span class="stat-label">Avg response</span>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.5/build/cjs/vexflow.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
