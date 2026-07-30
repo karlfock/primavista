@@ -278,6 +278,8 @@ function setStatus(message, kind) {
   if (kind) el.classList.add(kind);
 }
 
+let rescanTimer = null;
+
 function populateDeviceList(midiAccess) {
   const select = document.getElementById('midi-device');
   const inputs = Array.from(midiAccess.inputs.values());
@@ -289,7 +291,20 @@ function populateDeviceList(midiAccess) {
     select.innerHTML = '<option value="">No devices found</option>';
     attachInput(null);
     setStatus('No MIDI input device found. Connect a device.', 'error');
+    // Some environments (e.g. iOS Web MIDI Browser) populate the device
+    // list late and never fire statechange — keep rescanning until found.
+    if (!rescanTimer) {
+      rescanTimer = setTimeout(() => {
+        rescanTimer = null;
+        initMIDI();
+      }, 2000);
+    }
     return;
+  }
+
+  if (rescanTimer) {
+    clearTimeout(rescanTimer);
+    rescanTimer = null;
   }
 
   select.disabled = false;
