@@ -6,7 +6,8 @@
   "scripts": {
     "start": "npx --yes serve .",
     "test": "playwright test",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "screenshot": "node scripts/screenshot.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0"

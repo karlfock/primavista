@@ -23,10 +23,11 @@
 
   <section id="staff-panel" class="staff-panel">
     <div id="flash-overlay" class="flash-overlay"></div>
+    <div id="corrective-feedback" class="corrective-feedback hidden"></div>
     <div id="staff"></div>
   </section>
 
-  <section class="stats-panel">
+  <section id="stats-panel" class="stats-panel">
     <div class="stat">
       <span class="stat-value" id="stat-attempts">0</span>
       <span class="stat-label">Attempts</span>
@@ -43,6 +44,13 @@
       <span class="stat-value" id="stat-avg-time">—</span>
       <span class="stat-label">Avg response</span>
     </div>
+  </section>
+
+  <section id="summary-panel" class="summary-panel hidden">
+    <h2>Session complete</h2>
+    <p class="summary-score"><span id="summary-correct">0</span>/<span id="summary-total">25</span> correct on first try</p>
+    <p class="summary-avg">Avg response: <span id="summary-avg-time">—</span></p>
+    <button id="play-again-btn" type="button">Play again</button>
   </section>
 </main>
 

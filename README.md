@@ -24,6 +24,10 @@ npm test
 
 `npm test` starts a local server and runs headless automatically; no need to run `npm start` first. Use `npm run test:ui` for Playwright's interactive UI mode while debugging.
 
+### Visual smoke check
+
+`npm run screenshot` drives the app through the key screens (a note, the incorrect-feedback state, the session summary) and saves PNGs to `screenshots/` (gitignored) for a quick eyeball check during development. It doesn't assert anything — that's what the test suite is for.
+
 ## Browser support
 
 Web MIDI is supported in Chrome, Edge, and other Chromium-based browsers. It is **not** supported in Safari or Firefox without flags.

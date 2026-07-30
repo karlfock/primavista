@@ -119,6 +119,64 @@ main {
   opacity: 0.35;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.corrective-feedback {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--incorrect);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.summary-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+.summary-panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+}
+
+.summary-score {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 0.25rem 0;
+}
+
+.summary-avg {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+#play-again-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.6rem 1.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#play-again-btn:hover {
+  opacity: 0.9;
+}
+
 .stats-panel {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

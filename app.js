@@ -23,6 +23,12 @@ function midiToVexKey(midi) {
   return `${letter}/${octave}`;
 }
 
+function midiToDisplayName(midi) {
+  const letter = NATURAL_PITCH_CLASSES[midi % 12];
+  const octave = Math.floor(midi / 12) - 1;
+  return `${letter.toUpperCase()}${octave}`;
+}
+
 // Notes in this zone can be notated in either clef — see SPEC.md v2.
 const AMBIGUITY_LOW = 48; // C3
 const AMBIGUITY_HIGH = 72; // C5
@@ -44,17 +50,39 @@ function pickRandomNote(exclude) {
   return candidate;
 }
 
+// --- Sessions (see SPEC.md v3) -------------------------------------------
+const SESSION_LENGTH = 25;
+const INCORRECT_FEEDBACK_MS = 1500;
+
+function buildQueue(count) {
+  const queue = [];
+  let previous = null;
+  for (let i = 0; i < count; i++) {
+    const midi = pickRandomNote(previous);
+    queue.push({ midi, isFirstPresentation: true });
+    previous = midi;
+  }
+  return queue;
+}
+
+// Missed notes reappear later in the session rather than immediately next,
+// so the user can't just retry from muscle memory a beat later.
+function requeue(midi, queue) {
+  const item = { midi, isFirstPresentation: false };
+  const insertAt = queue.length === 0 ? 0 : 1 + Math.floor(Math.random() * queue.length);
+  queue.splice(insertAt, 0, item);
+}
+
 // --- App state ---------------------------------------------------------
-const state = {
-  targetMidi: null,
-  targetClef: null,
+const session = {
+  queue: [],
+  current: null, // { midi, clef, isFirstPresentation }
   noteStartTime: null,
-  missedThisNote: false,
-  stats: {
-    attempts: 0,
-    firstTryCorrect: 0,
-    responseTimes: [],
-  },
+  presentedCount: 0,
+  firstTryCorrect: 0,
+  responseTimes: [],
+  finished: false,
+  awaitingAdvance: false, // true while corrective feedback is shown after a miss
 };
 
 // --- Staff rendering (VexFlow grand staff) ------------------------------
@@ -112,52 +140,114 @@ function flash(kind) {
   flashTimeout = setTimeout(() => overlay.classList.remove(kind), 250);
 }
 
+// --- Corrective feedback (shown on misses only, see SPEC.md v3) --------
+function showCorrectiveFeedback(midi) {
+  const el = document.getElementById('corrective-feedback');
+  el.textContent = `That was ${midiToDisplayName(midi)}`;
+  el.classList.remove('hidden');
+}
+
+function hideCorrectiveFeedback() {
+  document.getElementById('corrective-feedback').classList.add('hidden');
+}
+
 // --- Stats display ---------------------------------------------------------
+function averageResponseTime(responseTimes) {
+  if (responseTimes.length === 0) return null;
+  return responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+}
+
+function formatResponseTime(avgMs) {
+  return avgMs === null ? '—' : `${(avgMs / 1000).toFixed(2)}s`;
+}
+
 function updateStatsDisplay() {
-  const { attempts, firstTryCorrect, responseTimes } = state.stats;
-  document.getElementById('stat-attempts').textContent = attempts;
+  const { presentedCount, firstTryCorrect, responseTimes } = session;
+  document.getElementById('stat-attempts').textContent = `${presentedCount} / ${SESSION_LENGTH}`;
   document.getElementById('stat-correct').textContent = firstTryCorrect;
 
   const accuracyEl = document.getElementById('stat-accuracy');
-  accuracyEl.textContent = attempts > 0
-    ? `${Math.round((firstTryCorrect / attempts) * 100)}%`
+  accuracyEl.textContent = presentedCount > 0
+    ? `${Math.round((firstTryCorrect / presentedCount) * 100)}%`
     : '—';
 
-  const avgEl = document.getElementById('stat-avg-time');
-  if (responseTimes.length > 0) {
-    const avgMs = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
-    avgEl.textContent = `${(avgMs / 1000).toFixed(2)}s`;
-  } else {
-    avgEl.textContent = '—';
-  }
+  document.getElementById('stat-avg-time').textContent = formatResponseTime(averageResponseTime(responseTimes));
 }
 
-// --- Core loop ---------------------------------------------------------
-function nextNote() {
-  state.targetMidi = pickRandomNote(state.targetMidi);
-  state.targetClef = chooseClef(state.targetMidi);
-  state.noteStartTime = Date.now();
-  state.missedThisNote = false;
-  state.stats.attempts += 1;
-  renderStaff(state.targetMidi, state.targetClef);
+// --- Core loop (see SPEC.md v3: single attempt per note, fixed sessions) --
+function showNextNote() {
+  const item = session.queue.shift();
+  const clef = chooseClef(item.midi);
+  session.current = { midi: item.midi, clef, isFirstPresentation: item.isFirstPresentation };
+  if (item.isFirstPresentation) {
+    session.presentedCount += 1;
+  }
+  session.noteStartTime = Date.now();
+  hideCorrectiveFeedback();
+  renderStaff(item.midi, clef);
   updateStatsDisplay();
 }
 
-function onNoteOn(midiNote) {
-  if (state.targetMidi === null) return;
+function advance() {
+  if (session.queue.length === 0) {
+    endSession();
+  } else {
+    showNextNote();
+  }
+}
 
-  if (midiNote === state.targetMidi) {
-    const responseTime = Date.now() - state.noteStartTime;
-    if (!state.missedThisNote) {
-      state.stats.firstTryCorrect += 1;
+function endSession() {
+  session.finished = true;
+  session.current = null;
+  showSummary();
+}
+
+function showSummary() {
+  document.getElementById('summary-correct').textContent = session.firstTryCorrect;
+  document.getElementById('summary-total').textContent = SESSION_LENGTH;
+  document.getElementById('summary-avg-time').textContent = formatResponseTime(averageResponseTime(session.responseTimes));
+  document.getElementById('staff-panel').classList.add('hidden');
+  document.getElementById('stats-panel').classList.add('hidden');
+  document.getElementById('summary-panel').classList.remove('hidden');
+}
+
+function startSession() {
+  session.queue = buildQueue(SESSION_LENGTH);
+  session.current = null;
+  session.presentedCount = 0;
+  session.firstTryCorrect = 0;
+  session.responseTimes = [];
+  session.finished = false;
+  session.awaitingAdvance = false;
+
+  document.getElementById('summary-panel').classList.add('hidden');
+  document.getElementById('staff-panel').classList.remove('hidden');
+  document.getElementById('stats-panel').classList.remove('hidden');
+
+  showNextNote();
+}
+
+function onNoteOn(midiNote) {
+  if (session.finished || session.awaitingAdvance || !session.current) return;
+
+  if (midiNote === session.current.midi) {
+    const responseTime = Date.now() - session.noteStartTime;
+    session.responseTimes.push(responseTime);
+    if (session.current.isFirstPresentation) {
+      session.firstTryCorrect += 1;
     }
-    state.stats.responseTimes.push(responseTime);
     flash('correct');
     updateStatsDisplay();
-    nextNote();
+    advance();
   } else {
-    state.missedThisNote = true;
     flash('incorrect');
+    showCorrectiveFeedback(session.current.midi);
+    requeue(session.current.midi, session.queue);
+    session.awaitingAdvance = true;
+    setTimeout(() => {
+      session.awaitingAdvance = false;
+      advance();
+    }, INCORRECT_FEEDBACK_MS);
   }
 }
 
@@ -238,25 +328,30 @@ async function initMIDI() {
 }
 
 // --- Boot ---------------------------------------------------------
+document.getElementById('play-again-btn').addEventListener('click', startSession);
 initMIDI();
-nextNote();
+startSession();
 
 // Exposed for the Playwright suite (tests/app.spec.js). This is a plain
 // script with no module system, so `const`/`let` bindings above aren't
 // reachable from outside — namespacing the ones tests need here is simpler
 // than converting the app to modules for an MVP this size.
 window.__primavista = {
-  state,
+  session,
   NOTE_RANGE,
   MIN_MIDI_NOTE,
   MAX_MIDI_NOTE,
   AMBIGUITY_LOW,
   AMBIGUITY_HIGH,
+  SESSION_LENGTH,
+  INCORRECT_FEEDBACK_MS,
   STAFF_WIDTH,
   STAFF_HEIGHT,
   isNaturalMidiNote,
   midiToVexKey,
+  midiToDisplayName,
   chooseClef,
   renderStaff,
   onNoteOn,
+  startSession,
 };
