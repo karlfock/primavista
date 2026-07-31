@@ -567,21 +567,37 @@ function initPianoInteraction() {
 }
 
 // --- Practice options (see SPEC.md v5) -----------------------------------
-// Captured once per session at buildQueue() time (in startSession) rather
-// than affecting an already-queued session live — changing a toggle
-// restarts the session with the new setting rather than altering notes
-// already queued under the old one.
+// Checking a box only updates this state — it does NOT restart whatever
+// session is in progress. Applying it requires the explicit "Start new
+// session" action, so changing a setting can never silently discard
+// progress the user didn't ask to discard.
 const practiceOptions = { chromatic: false, interval: false };
+
+// Interval mode always draws both notes from the full chromatic range
+// (see SPEC.md v5 — a diatonic-only interval can't guarantee an exact
+// interval quality), independent of the "Chromatic notes" checkbox. Left
+// alone, that checkbox would look inert/disconnected while interval mode
+// is on. Show it as checked + disabled instead, so its state honestly
+// reflects "chromatic notes are in effect right now," and restore the
+// user's own preference once interval mode is turned back off.
+function updateChromaticCheckboxState() {
+  const chromaticCheckbox = document.getElementById('chromatic-toggle');
+  chromaticCheckbox.disabled = practiceOptions.interval;
+  chromaticCheckbox.checked = practiceOptions.interval ? true : practiceOptions.chromatic;
+  chromaticCheckbox.title = practiceOptions.interval
+    ? 'Interval mode always uses chromatic notes'
+    : '';
+}
 
 function initPracticeOptions() {
   document.getElementById('chromatic-toggle').addEventListener('change', (event) => {
     practiceOptions.chromatic = event.target.checked;
-    startSession();
   });
   document.getElementById('interval-toggle').addEventListener('change', (event) => {
     practiceOptions.interval = event.target.checked;
-    startSession();
+    updateChromaticCheckboxState();
   });
+  document.getElementById('start-session-btn').addEventListener('click', startSession);
 }
 
 // --- Boot ---------------------------------------------------------

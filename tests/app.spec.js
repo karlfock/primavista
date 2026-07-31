@@ -373,9 +373,10 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
     expect(allValid).toBe(true);
   });
 
-  test('checking "Interval mode" presents a two-note chord target', async ({ page }) => {
+  test('checking "Interval mode" and starting a new session presents a two-note chord target', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
+    await page.locator('#start-session-btn').click();
 
     const midisLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
     expect(midisLength).toBe(2);
@@ -385,6 +386,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
   test('playing both interval notes in either order advances the session', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
+    await page.locator('#start-session-btn').click();
     const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
 
     // Play them in reverse (high, then low) order to confirm order doesn't matter.
@@ -398,6 +400,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
   test('a wrong note during an interval attempt fails immediately and names both target notes', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
+    await page.locator('#start-session-btn').click();
     const { expectedText, wrongMidi } = await page.evaluate(() => {
       const api = window.__primavista;
       const target = api.session.current.midis;
@@ -413,6 +416,52 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
     await expect(page.locator('#flash-overlay')).toHaveClass(/incorrect/);
     await expect(page.locator('#corrective-feedback')).toHaveText(expectedText);
     await expect(page.locator('#stat-correct')).toHaveText('0');
+  });
+
+  test('checking a practice-option box does not restart the current session until "Start new session" is clicked', async ({ page }) => {
+    await page.goto('/index.html');
+    const beforeLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
+    expect(beforeLength).toBe(1); // default: single-note session
+
+    await page.locator('#interval-toggle').check();
+    const stillUnchanged = await page.evaluate(() => window.__primavista.session.current.midis.length);
+    expect(stillUnchanged).toBe(1); // checking the box alone must not touch the live session
+
+    await page.locator('#start-session-btn').click();
+    const nowApplied = await page.evaluate(() => window.__primavista.session.current.midis.length);
+    expect(nowApplied).toBe(2);
+  });
+
+  test('"Chromatic notes" shows as checked and disabled while interval mode is on, and restores afterward', async ({ page }) => {
+    await page.goto('/index.html');
+    const chromaticCheckbox = page.locator('#chromatic-toggle');
+    const intervalCheckbox = page.locator('#interval-toggle');
+
+    // Start from an explicit, user-chosen unchecked chromatic preference.
+    await expect(chromaticCheckbox).not.toBeChecked();
+
+    await intervalCheckbox.check();
+    await expect(chromaticCheckbox).toBeChecked();
+    await expect(chromaticCheckbox).toBeDisabled();
+
+    await intervalCheckbox.uncheck();
+    await expect(chromaticCheckbox).not.toBeChecked(); // restores the prior (unchecked) preference
+    await expect(chromaticCheckbox).toBeEnabled();
+  });
+
+  test('"Chromatic notes" restores a checked preference after interval mode is turned back off', async ({ page }) => {
+    await page.goto('/index.html');
+    const chromaticCheckbox = page.locator('#chromatic-toggle');
+    const intervalCheckbox = page.locator('#interval-toggle');
+
+    await chromaticCheckbox.check();
+    await intervalCheckbox.check();
+    await expect(chromaticCheckbox).toBeChecked(); // still checked (now forced, not just preferred)
+    await expect(chromaticCheckbox).toBeDisabled();
+
+    await intervalCheckbox.uncheck();
+    await expect(chromaticCheckbox).toBeChecked(); // preference was checked, so it stays checked
+    await expect(chromaticCheckbox).toBeEnabled();
   });
 });
 

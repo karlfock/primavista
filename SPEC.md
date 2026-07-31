@@ -119,6 +119,10 @@ Two independent toggles, both off by default (default behavior is unchanged from
 
 Both notes of an interval can be anywhere in the chromatic range (not just naturals) — this is why chromatic-note spelling/rendering is shared infrastructure between the two toggles rather than being interval-specific.
 
+**Applying changes:** checking a box only updates the setting — it does not restart whatever session is in progress. A separate **"Start new session"** button applies the current settings explicitly. This is deliberate: a checkbox silently discarding an in-progress session as a side effect was confusing, so starting a session (with whatever settings are currently set) is always its own explicit action, never an implicit consequence of changing a setting.
+
+**Chromatic notes ↔ Interval mode dependency:** interval mode always uses the full chromatic range for both notes regardless of the "Chromatic notes" checkbox (see rationale above) — so while interval mode is checked, the "Chromatic notes" checkbox displays as checked and disabled rather than looking inert/disconnected from what's actually happening. Unchecking interval mode restores the user's own prior chromatic preference (not just resetting to unchecked).
+
 **Spelling:** always sharps, never flats (`PITCH_CLASS_SPELLING` in `app.js`). With no key signature or tonal context, there's no principled basis to choose flat spelling for some notes and sharp for others, so picking one consistent spelling avoids that decision entirely.
 
 **Matching logic:** generalizes the existing single-attempt rule via a "still needed" pending-notes set on the current target. Any note-on that isn't one of the target's remaining notes is an immediate miss (same single-attempt philosophy as v3); a correct note-on removes it from the pending set; the attempt resolves as correct only once the set is empty. Order doesn't matter for a chord. For a single-note target this is exactly the old one-note-on-resolves-immediately behavior — the generalization is behavior-preserving when there's only one target note.
@@ -129,4 +133,6 @@ Both notes of an interval can be anywhere in the chromatic range (not just natur
 - With both toggles off, behavior is unchanged from v4 (single natural-note targets).
 - "Chromatic notes" checked: single-note targets can be any of the 12 pitch classes, correctly notated with sharps where needed.
 - "Interval mode" checked: each target is a random two-note chord 1–12 semitones apart, rendered as a stacked chord (VexFlow handles second-interval notehead offsetting automatically); both notes must be played (order-independent) to advance; any other note-on is an immediate miss showing both target note names.
+- Checking/unchecking either box never alters the session already in progress; a "Start new session" button applies the current settings explicitly.
+- While interval mode is checked, "Chromatic notes" shows as checked and disabled; unchecking interval mode restores whatever the user had it set to before.
 - All v1/v2/v3/v4 definition-of-done items continue to hold.
