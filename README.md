@@ -30,7 +30,7 @@ npm test
 
 ## Browser support
 
-Web MIDI is supported in Chrome, Edge, and other Chromium-based browsers. It is **not** supported in Safari or Firefox without flags.
+Web MIDI is supported in Chrome, Edge, and other Chromium-based browsers, and in Firefox 108+. Safari has never supported it, on macOS or iOS. On iOS, use a third-party browser app that bridges Web MIDI to Core MIDI, e.g. [MIDIWeb Browser](https://apps.apple.com/us/app/midiweb-browser/id6757226617).
 
 ## Deploying to Vercel
 
