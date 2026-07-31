@@ -240,4 +240,41 @@ test.describe('MIDI access states', () => {
     await expect(page.locator('#midi-status')).toContainText('No MIDI input device found');
     await context.close();
   });
+
+  // Regression test for the iOS "Web MIDI Browser" app: its MIDIInputMap
+  // exposes forEach() but its values() iterator lacks Symbol.iterator, so
+  // Array.from(midiAccess.inputs.values()) throws and the connected device
+  // never makes it into the list, even though a device is connected.
+  // See https://github.com/leafo/sightreading.training/issues/8.
+  test('lists a device from a MIDIInputMap whose values() iterator is not spec-compliant', async ({ page }) => {
+    await page.addInitScript(() => {
+      const fakeInput = { id: 'fake-1', name: 'Yamaha Arius', onmidimessage: null };
+      const brokenValuesIterator = () => {
+        let done = false;
+        return {
+          next() {
+            if (done) return { value: undefined, done: true };
+            done = true;
+            return { value: fakeInput, done: false };
+          },
+          // Intentionally no [Symbol.iterator], mirroring the broken shim.
+        };
+      };
+      const inputs = {
+        forEach(cb) {
+          cb(fakeInput, fakeInput.id, this);
+        },
+        values: brokenValuesIterator,
+      };
+      const outputs = {
+        forEach() {},
+        values: () => ({ next: () => ({ value: undefined, done: true }) }),
+      };
+      navigator.requestMIDIAccess = async () => ({ inputs, outputs, onstatechange: null });
+    });
+
+    await page.goto('/index.html');
+    await expect(page.locator('#midi-status')).toContainText('Listening on Yamaha Arius');
+    await expect(page.locator('#midi-device')).not.toBeDisabled();
+  });
 });

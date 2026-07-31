@@ -282,7 +282,12 @@ let rescanTimer = null;
 
 function populateDeviceList(midiAccess) {
   const select = document.getElementById('midi-device');
-  const inputs = Array.from(midiAccess.inputs.values());
+  // Some iOS Web MIDI shims (e.g. the "Web MIDI Browser" app) implement
+  // MIDIInputMap without a spec-compliant iterator, so `.values()` +
+  // Array.from throws. forEach is the one method every implementation
+  // supports, so use that instead.
+  const inputs = [];
+  midiAccess.inputs.forEach((input) => inputs.push(input));
 
   select.innerHTML = '';
 
