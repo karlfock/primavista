@@ -289,6 +289,7 @@ function startSession() {
   session.finished = false;
   session.awaitingAdvance = false;
 
+  document.getElementById('idle-panel').classList.add('hidden');
   document.getElementById('summary-panel').classList.add('hidden');
   document.getElementById('staff-panel').classList.remove('hidden');
   document.getElementById('stats-panel').classList.remove('hidden');
@@ -601,12 +602,16 @@ function initPracticeOptions() {
 }
 
 // --- Boot ---------------------------------------------------------
+// No startSession() call here — the app starts idle (see #idle-panel in
+// index.html). session.current stays null until the user explicitly
+// clicks "Start new session", and onNoteOn's existing guard clause
+// (`!session.current`) already no-ops any note input — MIDI or the
+// on-screen piano — until then, so nothing extra is needed there.
 document.getElementById('play-again-btn').addEventListener('click', startSession);
 initMIDI();
 buildPiano();
 initPianoInteraction();
 initPracticeOptions();
-startSession();
 
 // Exposed for the Playwright suite (tests/app.spec.js). This is a plain
 // script with no module system, so `const`/`let` bindings above aren't

@@ -121,6 +121,8 @@ Both notes of an interval can be anywhere in the chromatic range (not just natur
 
 **Applying changes:** checking a box only updates the setting — it does not restart whatever session is in progress. A separate **"Start new session"** button applies the current settings explicitly. This is deliberate: a checkbox silently discarding an in-progress session as a side effect was confusing, so starting a session (with whatever settings are currently set) is always its own explicit action, never an implicit consequence of changing a setting.
 
+This extends to the very first session too: the app now loads into an **idle state** (`#idle-panel`) rather than auto-starting — no note shown, no live stats, and no note input (MIDI or the on-screen piano) does anything at all (`session.current` stays `null`, and `onNoteOn`'s existing guard clause already no-ops on that) until "Start new session" is clicked for the first time. Choosing practice settings and then explicitly starting is the same flow whether it's the first session or the fifth.
+
 **Chromatic notes ↔ Interval mode dependency:** interval mode always uses the full chromatic range for both notes regardless of the "Chromatic notes" checkbox (see rationale above) — so while interval mode is checked, the "Chromatic notes" checkbox displays as checked and disabled rather than looking inert/disconnected from what's actually happening. Unchecking interval mode restores the user's own prior chromatic preference (not just resetting to unchecked).
 
 **Spelling:** always sharps, never flats (`PITCH_CLASS_SPELLING` in `app.js`). With no key signature or tonal context, there's no principled basis to choose flat spelling for some notes and sharp for others, so picking one consistent spelling avoids that decision entirely.
@@ -135,4 +137,5 @@ Both notes of an interval can be anywhere in the chromatic range (not just natur
 - "Interval mode" checked: each target is a random two-note chord 1–12 semitones apart, rendered as a stacked chord (VexFlow handles second-interval notehead offsetting automatically); both notes must be played (order-independent) to advance; any other note-on is an immediate miss showing both target note names.
 - Checking/unchecking either box never alters the session already in progress; a "Start new session" button applies the current settings explicitly.
 - While interval mode is checked, "Chromatic notes" shows as checked and disabled; unchecking interval mode restores whatever the user had it set to before.
+- On page load, the app is idle: no note is shown, stats/staff panels are hidden, and no note input (MIDI or on-screen piano) has any effect until "Start new session" is clicked.
 - All v1/v2/v3/v4 definition-of-done items continue to hold.

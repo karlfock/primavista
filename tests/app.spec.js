@@ -3,6 +3,52 @@ const { test, expect } = require('@playwright/test');
 // All-correct playthroughs never requeue, so exactly SESSION_LENGTH notes are needed.
 const SESSION_LENGTH_GUARD = 25;
 
+// The app starts idle (see "idle state" describe block below) — most tests
+// care about an active session, not the idle state itself, so they start
+// one explicitly via this helper rather than relying on auto-start.
+async function startNewSession(page) {
+  await page.locator('#start-session-btn').click();
+}
+
+test.describe('idle state before a session starts', () => {
+  test('shows the idle panel with no active session on load', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#idle-panel')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#staff-panel')).toHaveClass(/hidden/);
+    await expect(page.locator('#stats-panel')).toHaveClass(/hidden/);
+    const current = await page.evaluate(() => window.__primavista.session.current);
+    expect(current).toBeNull();
+  });
+
+  test('a MIDI note-on before starting does nothing', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.__primavista.onNoteOn(60));
+    const current = await page.evaluate(() => window.__primavista.session.current);
+    expect(current).toBeNull();
+    await expect(page.locator('#flash-overlay')).not.toHaveClass(/correct|incorrect/);
+  });
+
+  test('tapping a piano key before starting does nothing', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('.piano-key[data-midi="60"]').click();
+    const current = await page.evaluate(() => window.__primavista.session.current);
+    expect(current).toBeNull();
+  });
+
+  test('clicking "Start new session" hides the idle panel and begins at note 1 of 25', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    await expect(page.locator('#idle-panel')).toHaveClass(/hidden/);
+    await expect(page.locator('#staff-panel')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#stats-panel')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+    await expect(page.locator('#stat-correct')).toHaveText('0');
+    await expect(page.locator('#stat-accuracy')).toHaveText('0%');
+    await expect(page.locator('#stat-avg-time')).toHaveText('—');
+    await expect(page.locator('#summary-panel')).toHaveClass(/hidden/);
+  });
+});
+
 test.describe('page load', () => {
   test('renders a grand staff with no console or page errors', async ({ page }) => {
     const errors = [];
@@ -12,17 +58,9 @@ test.describe('page load', () => {
     });
 
     await page.goto('/index.html');
+    await startNewSession(page);
     await expect(page.locator('#staff svg')).toHaveCount(1);
     expect(errors).toEqual([]);
-  });
-
-  test('starts a session at note 1 of 25', async ({ page }) => {
-    await page.goto('/index.html');
-    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
-    await expect(page.locator('#stat-correct')).toHaveText('0');
-    await expect(page.locator('#stat-accuracy')).toHaveText('0%');
-    await expect(page.locator('#stat-avg-time')).toHaveText('—');
-    await expect(page.locator('#summary-panel')).toHaveClass(/hidden/);
   });
 });
 
@@ -98,6 +136,7 @@ test.describe('clef selection (SPEC.md v2: ambiguity zone)', () => {
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));
     await page.goto('/index.html');
+    await startNewSession(page); // staff-panel is hidden until a session starts
 
     for (const midi of [21, 96]) {
       await page.evaluate((m) => {
@@ -115,6 +154,7 @@ test.describe('clef selection (SPEC.md v2: ambiguity zone)', () => {
 test.describe('core loop (SPEC.md v3: single attempt, corrective feedback, re-queue)', () => {
   test('a correct note-on advances, logs response time, and shows no note name', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     const targetBefore = await page.evaluate(() => window.__primavista.session.current.midi);
 
     await page.evaluate((midi) => window.__primavista.onNoteOn(midi), targetBefore);
@@ -131,6 +171,7 @@ test.describe('core loop (SPEC.md v3: single attempt, corrective feedback, re-qu
 
   test('an incorrect note-on flashes red, shows the correct note name, and blocks input until it advances', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     const { targetMidi, wrongMidi, expectedName } = await page.evaluate(() => {
       const api = window.__primavista;
       const correct = api.session.current.midi;
@@ -153,6 +194,7 @@ test.describe('core loop (SPEC.md v3: single attempt, corrective feedback, re-qu
 
   test('a missed note is re-queued and excluded from first-try-correct when it comes back', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     const { targetMidi, wrongMidi } = await page.evaluate(() => {
       const api = window.__primavista;
       const correct = api.session.current.midi;
@@ -191,6 +233,7 @@ test.describe('core loop (SPEC.md v3: single attempt, corrective feedback, re-qu
 test.describe('sessions (SPEC.md v3: fixed 25-note sessions)', () => {
   test('ends with a summary after 25 notes answered correctly on the first try', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
 
     for (let i = 0; i < SESSION_LENGTH_GUARD; i++) {
       const finished = await page.evaluate(() => window.__primavista.session.finished);
@@ -208,6 +251,7 @@ test.describe('sessions (SPEC.md v3: fixed 25-note sessions)', () => {
 
   test('play again starts a fresh session', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
 
     for (let i = 0; i < SESSION_LENGTH_GUARD; i++) {
       const finished = await page.evaluate(() => window.__primavista.session.finished);
@@ -245,6 +289,7 @@ test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () 
 
   test('includes keys above the quizzed A0-C7 range (e.g. C8), which always register as incorrect', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     await expect(page.locator('.piano-key[data-midi="108"]')).toHaveCount(1); // C8
 
     await page.locator('.piano-key[data-midi="108"]').click();
@@ -255,6 +300,7 @@ test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () 
 
   test('tapping the correct key advances the session, same as a MIDI note-on', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
 
     await page.locator(`.piano-key[data-midi="${targetMidi}"]`).click();
@@ -265,6 +311,7 @@ test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () 
 
   test('tapping the wrong key shows corrective feedback, same as a MIDI note-on', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     const wrongMidi = await page.evaluate(() => {
       const api = window.__primavista;
       return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
@@ -322,6 +369,7 @@ test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () 
 test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
   test('default mode (both toggles off) still presents single-note targets', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page);
     const midisLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
     expect(midisLength).toBe(1);
   });
@@ -376,7 +424,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
   test('checking "Interval mode" and starting a new session presents a two-note chord target', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
-    await page.locator('#start-session-btn').click();
+    await startNewSession(page);
 
     const midisLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
     expect(midisLength).toBe(2);
@@ -386,7 +434,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
   test('playing both interval notes in either order advances the session', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
-    await page.locator('#start-session-btn').click();
+    await startNewSession(page);
     const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
 
     // Play them in reverse (high, then low) order to confirm order doesn't matter.
@@ -400,7 +448,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
   test('a wrong note during an interval attempt fails immediately and names both target notes', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
-    await page.locator('#start-session-btn').click();
+    await startNewSession(page);
     const { expectedText, wrongMidi } = await page.evaluate(() => {
       const api = window.__primavista;
       const target = api.session.current.midis;
@@ -420,14 +468,15 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
 
   test('checking a practice-option box does not restart the current session until "Start new session" is clicked', async ({ page }) => {
     await page.goto('/index.html');
+    await startNewSession(page); // default: single-note session
     const beforeLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
-    expect(beforeLength).toBe(1); // default: single-note session
+    expect(beforeLength).toBe(1);
 
     await page.locator('#interval-toggle').check();
     const stillUnchanged = await page.evaluate(() => window.__primavista.session.current.midis.length);
     expect(stillUnchanged).toBe(1); // checking the box alone must not touch the live session
 
-    await page.locator('#start-session-btn').click();
+    await startNewSession(page);
     const nowApplied = await page.evaluate(() => window.__primavista.session.current.midis.length);
     expect(nowApplied).toBe(2);
   });
@@ -548,6 +597,7 @@ test.describe('MIDI access states', () => {
 
     await page.goto('/index.html');
     await expect(page.locator('#midi-status')).toContainText('Listening on ARIUS');
+    await startNewSession(page);
 
     const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
     await page.evaluate((midi) => {

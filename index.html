@@ -27,7 +27,11 @@
     <button id="start-session-btn" type="button">Start new session</button>
   </section>
 
-  <section id="staff-panel" class="staff-panel">
+  <section id="idle-panel" class="idle-panel">
+    <p>Choose your practice settings above, then click <strong>Start new session</strong> to begin.</p>
+  </section>
+
+  <section id="staff-panel" class="staff-panel hidden">
     <div id="flash-overlay" class="flash-overlay"></div>
     <div id="corrective-feedback" class="corrective-feedback hidden"></div>
     <div id="staff"></div>
@@ -37,7 +41,7 @@
     <div id="piano"></div>
   </section>
 
-  <section id="stats-panel" class="stats-panel">
+  <section id="stats-panel" class="stats-panel hidden">
     <div class="stat">
       <span class="stat-value" id="stat-attempts">0</span>
       <span class="stat-label">Attempts</span>

@@ -249,6 +249,15 @@ main {
   background: var(--accent);
 }
 
+.idle-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+
 .summary-panel {
   background: var(--panel);
   border: 1px solid var(--border);
