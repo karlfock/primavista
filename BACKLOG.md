@@ -12,14 +12,6 @@ Persist per-note accuracy across sessions and bias note selection toward notes t
 
 **Update (2026-07-31):** decided to keep this simple for now (mostly used with a real piano connected to an iPad, so cross-device sync isn't a pressing need) — parked here, not being built yet.
 
-## Interval practice: restrict to specific interval types
-
-`SPEC.md` v5 shipped interval mode with every chromatic interval (1–12 semitones, minor 2nd through octave) equally likely, no way to narrow it down. Add a way to select which interval type(s) are in play — e.g. "only practice fourths and fifths today."
-
-**Why deferred out of v5:** the smallest useful version of interval mode had to keep the interval type unpredictable per note (see `SPEC.md` v5 rationale — a fixed, known interval type lets you read one note and apply a memorized offset instead of actually judging the two-note gap, which defeats the drill). So the v5 slice went broad-but-unrestricted (any interval) rather than narrow-and-predictable (one fixed interval), and restricting to a *subset* of interval types (which still varies within the session) is a separate, additive feature on top of that foundation.
-
-**UX direction discussed:** a compact row of interval-abbreviation toggle chips (`m2 M2 m3 M3 P4 TT P5 m6 M6 m7 M7 P8`) rather than a vertical checkbox list with full names, matching the app's existing minimal/compact style (e.g. the single-row MIDI panel).
-
 ## Interval practice: melodic mode
 
 Alongside interval mode's current chord (harmonic, both notes together) presentation, add a melodic mode — the two notes played one after another rather than simultaneously, with the order (ascending/descending) randomized per note. Randomly choosing between chord and melodic presentation per note was also discussed, so both get practiced.

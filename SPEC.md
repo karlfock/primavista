@@ -129,7 +129,9 @@ This extends to the very first session too: the app now loads into an **idle sta
 
 **Matching logic:** generalizes the existing single-attempt rule via a "still needed" pending-notes set on the current target. Any note-on that isn't one of the target's remaining notes is an immediate miss (same single-attempt philosophy as v3); a correct note-on removes it from the pending set; the attempt resolves as correct only once the set is empty. Order doesn't matter for a chord. For a single-note target this is exactly the old one-note-on-resolves-immediately behavior — the generalization is behavior-preserving when there's only one target note.
 
-**Explicitly deferred (see `BACKLOG.md`):** restricting practice to specific interval types (currently every interval 1–12 semitones is equally likely, no way to select a subset), melodic mode (notes played in sequence rather than together, with randomized direction), and mixing interval/chromatic presentations with plain single notes within one session (currently each toggle applies to the whole session).
+**Every interval type is always equally likely, by design** — narrowing practice to a subset of interval types (e.g. "only fourths and fifths") was considered and rejected: even a curated subset shrinks the guessing space enough to start pattern-matching "it's probably one of these" instead of actually judging the two-note gap, the same problem as a single fixed interval, just diluted. This isn't expected to change.
+
+**Explicitly deferred (see `BACKLOG.md`):** melodic mode (notes played in sequence rather than together, with randomized direction), and mixing interval/chromatic presentations with plain single notes within one session (currently each toggle applies to the whole session).
 
 ## Definition of done for v5
 - With both toggles off, behavior is unchanged from v4 (single natural-note targets).
