@@ -13,3 +13,13 @@ Alongside interval mode's current chord (harmonic, both notes together) presenta
 ## Mixing interval/chromatic modes with plain single notes
 
 Currently "Chromatic notes" and "Interval mode" each apply to the *whole* session (captured once at `startSession()`); there's no way to get a session that mixes plain single notes with occasional chords/chromatic notes. Deferred out of v5 specifically to avoid designing a mixing ratio in the first slice — worth revisiting once the individual modes have been used enough to know whether mixing is actually wanted.
+
+## Name the interval type in corrective feedback
+
+On a miss, corrective feedback currently shows only the note names (e.g. "That was F4 + Gb4") — not the interval type (e.g. "minor 2nd"). Naming it alongside the notes pairs the visual gap with its verbal label (dual coding), which should help build a conceptual map of what each interval actually is, rather than pure visual pattern memorization. Cheap: it's an addition to existing feedback text, not a new mechanic.
+
+## "Drill my weak spots" session mode
+
+A session type built directly on the trouble-score data from `SPEC.md` v6, but going further than just *biasing* the normal mixed session toward hard items — a short session made *entirely* from the user's current highest-scoring notes/intervals, practiced in isolation until they clear. This is deliberate/isolation practice made concrete: real repeated focus on exactly what's actually difficult, not diluted into a mostly-easy 25-note session.
+
+**Note (2026-08-01):** a third idea — playing the correct pitch/interval audibly on a miss — was explicitly rejected, not deferred: "I hear what I play in the piano... I don't have that good ears." Audio playback wouldn't help this particular user and pulls in a feature category the app has none of today (Web Audio synthesis). Not going on the backlog at all.
