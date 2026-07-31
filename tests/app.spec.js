@@ -571,6 +571,170 @@ test.describe('chord note spelling avoids same-letter collisions (SPEC.md v5)', 
   });
 });
 
+test.describe('weighted note selection based on historical misses (SPEC.md v6)', () => {
+  test('trouble keys: notes are keyed by midi, intervals by sorted pair regardless of input order', async ({ page }) => {
+    await page.goto('/index.html');
+    const keys = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        note: api.troubleKeyForNote(60),
+        pairAscending: api.troubleKeyForInterval([65, 66]),
+        pairDescending: api.troubleKeyForInterval([66, 65]), // must produce the same key
+      };
+    });
+    expect(keys.note).toBe('n:60');
+    expect(keys.pairAscending).toBe('i:65-66');
+    expect(keys.pairDescending).toBe('i:65-66');
+  });
+
+  test('a miss increments the trouble score; a correct answer decrements it and deletes it at 0', async ({ page }) => {
+    await page.goto('/index.html');
+    const scoresAfterEachStep = await page.evaluate(() => {
+      const api = window.__primavista;
+      const steps = [];
+      api.recordAttemptOutcome([60], false);
+      steps.push(api.loadTroubleScores()['n:60']);
+      api.recordAttemptOutcome([60], false);
+      steps.push(api.loadTroubleScores()['n:60']);
+      api.recordAttemptOutcome([60], true);
+      steps.push(api.loadTroubleScores()['n:60']);
+      api.recordAttemptOutcome([60], true);
+      steps.push('n:60' in api.loadTroubleScores()); // should be gone entirely, not just 0
+      return steps;
+    });
+    expect(scoresAfterEachStep).toEqual([1, 2, 1, false]);
+  });
+
+  test('a correct answer on an already-0 score stays absent (never goes negative)', async ({ page }) => {
+    await page.goto('/index.html');
+    const hasKey = await page.evaluate(() => {
+      const api = window.__primavista;
+      api.recordAttemptOutcome([60], true);
+      return 'n:60' in api.loadTroubleScores();
+    });
+    expect(hasKey).toBe(false);
+  });
+
+  test('interval misses are scored independently from single-note misses', async ({ page }) => {
+    await page.goto('/index.html');
+    const scores = await page.evaluate(() => {
+      const api = window.__primavista;
+      api.recordAttemptOutcome([65], false); // single F4
+      api.recordAttemptOutcome([65, 66], false); // F4+F#4 interval
+      return api.loadTroubleScores();
+    });
+    expect(scores).toEqual({ 'n:65': 1, 'i:65-66': 1 });
+  });
+
+  test('pickRandomNote favors a note with a high trouble score', async ({ page }) => {
+    await page.goto('/index.html');
+    const counts = await page.evaluate(() => {
+      const api = window.__primavista;
+      const scores = { [api.troubleKeyForNote(60)]: 500 }; // C4 heavily favored
+      const tally = {};
+      for (let i = 0; i < 300; i++) {
+        const note = api.pickRandomNote(null, scores);
+        tally[note] = (tally[note] || 0) + 1;
+      }
+      return tally;
+    });
+    // Weight 501 vs 1 for every other of the ~45 naturals in range (total
+    // weight ~545) puts C4's expected share around 92% of the sample —
+    // comfortably clear of 100/300 with margin for random variance.
+    expect(counts[60]).toBeGreaterThan(100);
+  });
+
+  test('pickIntervalPair favors an interval pair with a high trouble score', async ({ page }) => {
+    await page.goto('/index.html');
+    const counts = await page.evaluate(() => {
+      const api = window.__primavista;
+      // The candidate pool is in the hundreds of pairs (much bigger than the
+      // ~45-note single-note pool), so the score needs to be large relative
+      // to that pool size to make the boosted pair dominate a sample.
+      const scores = { [api.troubleKeyForInterval([65, 66])]: 5000 };
+      const tally = {};
+      for (let i = 0; i < 300; i++) {
+        const [low, high] = api.pickIntervalPair(scores);
+        const key = `${low}-${high}`;
+        tally[key] = (tally[key] || 0) + 1;
+      }
+      return tally;
+    });
+    expect(counts['65-66']).toBeGreaterThan(100);
+  });
+
+  test('with no trouble scores at all, selection stays effectively uniform (existing behavior preserved)', async ({ page }) => {
+    await page.goto('/index.html');
+    const allInRange = await page.evaluate(() => {
+      const api = window.__primavista;
+      for (let i = 0; i < 200; i++) {
+        const note = api.pickRandomNote(null, {});
+        if (!api.NOTE_RANGE.includes(note)) return false;
+      }
+      return true;
+    });
+    expect(allInRange).toBe(true);
+  });
+
+  test('missing a note in a real session persists a trouble score to localStorage', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#start-session-btn').click();
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      api.session.current = { midi: 60, midis: [60], clef: 'treble', isFirstPresentation: true };
+    });
+
+    await page.evaluate(() => window.__primavista.onNoteOn(21)); // wrong note
+
+    const score = await page.evaluate(() => window.__primavista.loadTroubleScores()['n:60']);
+    expect(score).toBe(1);
+  });
+
+  test('answering correctly in a real session does not add a trouble score', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#start-session-btn').click();
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      api.session.current = { midi: 60, midis: [60], clef: 'treble', isFirstPresentation: true };
+    });
+
+    await page.evaluate(() => window.__primavista.onNoteOn(60)); // correct note
+
+    const hasKey = await page.evaluate(() => 'n:60' in window.__primavista.loadTroubleScores());
+    expect(hasKey).toBe(false);
+  });
+
+  test('a persisted trouble score survives starting a new session (weighting carries over)', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+
+    await page.locator('#start-session-btn').click();
+
+    const score = await page.evaluate(() => window.__primavista.loadTroubleScores()['n:60']);
+    expect(score).toBe(1); // still there after a fresh buildQueue() read it
+  });
+
+  test('a broken localStorage does not crash note selection or attempt recording', async ({ page }) => {
+    await page.goto('/index.html');
+    const result = await page.evaluate(() => {
+      const api = window.__primavista;
+      const original = window.localStorage.setItem;
+      window.localStorage.setItem = () => { throw new Error('quota exceeded'); };
+      try {
+        api.recordAttemptOutcome([60], false); // must not throw
+        const note = api.pickRandomNote(null, {}); // must still return a valid note
+        return { ok: true, note };
+      } catch (err) {
+        return { ok: false, message: err.message };
+      } finally {
+        window.localStorage.setItem = original;
+      }
+    });
+    expect(result.ok).toBe(true);
+    expect(typeof result.note).toBe('number');
+  });
+});
+
 test.describe('MIDI access states', () => {
   test('shows an access-denied status when permission is not granted', async ({ page }) => {
     await page.goto('/index.html');

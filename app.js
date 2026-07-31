@@ -84,22 +84,14 @@ function chooseClef(midi) {
 const NOTE_RANGE = buildNoteRange(MIN_MIDI_NOTE, MAX_MIDI_NOTE);
 const CHROMATIC_RANGE = buildChromaticRange(MIN_MIDI_NOTE, MAX_MIDI_NOTE);
 
-function pickRandomNote(exclude) {
-  if (NOTE_RANGE.length === 1) return NOTE_RANGE[0];
-  let candidate;
-  do {
-    candidate = NOTE_RANGE[Math.floor(Math.random() * NOTE_RANGE.length)];
-  } while (candidate === exclude);
-  return candidate;
+function pickRandomNote(exclude, scores = {}) {
+  const candidates = NOTE_RANGE.filter((m) => m !== exclude);
+  return pickWeighted(candidates, (m) => 1 + (scores[troubleKeyForNote(m)] || 0));
 }
 
-function pickRandomChromaticNote(exclude) {
-  if (CHROMATIC_RANGE.length === 1) return CHROMATIC_RANGE[0];
-  let candidate;
-  do {
-    candidate = CHROMATIC_RANGE[Math.floor(Math.random() * CHROMATIC_RANGE.length)];
-  } while (candidate === exclude);
-  return candidate;
+function pickRandomChromaticNote(exclude, scores = {}) {
+  const candidates = CHROMATIC_RANGE.filter((m) => m !== exclude);
+  return pickWeighted(candidates, (m) => 1 + (scores[troubleKeyForNote(m)] || 0));
 }
 
 // --- Intervals (see SPEC.md v5) ------------------------------------------
@@ -110,19 +102,105 @@ function pickRandomChromaticNote(exclude) {
 const MIN_INTERVAL_SEMITONES = 1; // minor 2nd
 const MAX_INTERVAL_SEMITONES = 12; // octave
 
-function pickIntervalPair() {
-  const span = MAX_INTERVAL_SEMITONES - MIN_INTERVAL_SEMITONES + 1;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const distance = MIN_INTERVAL_SEMITONES + Math.floor(Math.random() * span);
-    const root = MIN_MIDI_NOTE + Math.floor(Math.random() * (MAX_MIDI_NOTE - MIN_MIDI_NOTE + 1));
-    const canGoUp = root + distance <= MAX_MIDI_NOTE;
-    const canGoDown = root - distance >= MIN_MIDI_NOTE;
-    if (!canGoUp && !canGoDown) continue; // retry: this root/distance combo doesn't fit the range
-    const goUp = canGoUp && (!canGoDown || Math.random() < 0.5);
-    const second = goUp ? root + distance : root - distance;
-    return [Math.min(root, second), Math.max(root, second)];
+// Every valid (low, high) pair in the range, enumerated once. Generating
+// only "low + distance = high" (rather than also considering the reverse
+// direction) already covers every distinct pair exactly once, since a
+// pair's low/high roles are fixed regardless of which one you'd call the
+// "root". Small enough (well under 1000 entries) to keep in memory and
+// weight-pick from directly, rather than the previous generate-and-retry
+// approach — which also makes weighting by trouble score straightforward.
+function buildIntervalCandidates() {
+  const candidates = [];
+  for (let low = MIN_MIDI_NOTE; low <= MAX_MIDI_NOTE; low++) {
+    for (let distance = MIN_INTERVAL_SEMITONES; distance <= MAX_INTERVAL_SEMITONES; distance++) {
+      const high = low + distance;
+      if (high > MAX_MIDI_NOTE) break;
+      candidates.push([low, high]);
+    }
   }
+  return candidates;
+}
+const INTERVAL_CANDIDATES = buildIntervalCandidates();
+
+function pickIntervalPair(scores = {}) {
+  return pickWeighted(INTERVAL_CANDIDATES, (pair) => 1 + (scores[troubleKeyForInterval(pair)] || 0));
+}
+
+// --- Weighted note selection (see SPEC.md v6) -----------------------------
+// A per-item "trouble score" persisted in localStorage: +1 on a miss, -1
+// (floored at 0) on a correct answer. Selection weight is 1 + score, so an
+// item you've missed 3 times is 4x as likely to come up as one you've
+// never missed. Once enough correct answers bring a score back to 0, the
+// entry is deleted entirely — it doesn't need a special "forget" step,
+// selection just returns to the same baseline as everything else, and the
+// zero-value entries would just be storage clutter.
+//
+// Interval items are keyed by the *exact pair* (e.g. "i:65-66"), not by
+// interval type (e.g. "minor 2nd") — weighting by type would bias toward
+// showing more of whichever type you're weak at in general, which edges
+// back toward the predictability problem interval mode deliberately
+// avoids (see SPEC.md v5: a foreseeable interval type lets you read one
+// note and infer the other instead of judging the actual gap). Keying on
+// the specific pair targets real weak spots without making the type
+// itself predictable.
+const TROUBLE_SCORE_STORAGE_KEY = 'primavista:troubleScores';
+
+function troubleKeyForNote(midi) {
+  return `n:${midi}`;
+}
+
+function troubleKeyForInterval(midis) {
+  const [low, high] = [...midis].sort((a, b) => a - b);
+  return `i:${low}-${high}`;
+}
+
+function troubleKeyFor(midis) {
+  return midis.length === 1 ? troubleKeyForNote(midis[0]) : troubleKeyForInterval(midis);
+}
+
+// localStorage can throw (private browsing, quota, disabled) — weighting
+// is a nice-to-have, so failures here just fall back to empty/uniform
+// weighting rather than breaking the app.
+function loadTroubleScores() {
+  try {
+    const raw = localStorage.getItem(TROUBLE_SCORE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function saveTroubleScores(scores) {
+  try {
+    localStorage.setItem(TROUBLE_SCORE_STORAGE_KEY, JSON.stringify(scores));
+  } catch (err) {
+    // Not persisted this time; non-fatal.
+  }
+}
+
+function recordAttemptOutcome(midis, wasCorrect) {
+  const scores = loadTroubleScores();
+  const key = troubleKeyFor(midis);
+  const next = wasCorrect ? Math.max(0, (scores[key] || 0) - 1) : (scores[key] || 0) + 1;
+  if (next === 0) {
+    delete scores[key];
+  } else {
+    scores[key] = next;
+  }
+  saveTroubleScores(scores);
+}
+
+// Weighted random pick: each candidate's weight is 1 + its trouble score,
+// so it degrades to plain uniform selection when scores is empty/all-zero.
+function pickWeighted(candidates, weightFn) {
+  const weights = candidates.map(weightFn);
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i];
+    if (r < 0) return candidates[i];
+  }
+  return candidates[candidates.length - 1]; // floating-point fallback
 }
 
 // --- Sessions (see SPEC.md v3) -------------------------------------------
@@ -135,12 +213,13 @@ const INCORRECT_FEEDBACK_MS = 1500;
 // (the full target, length 1 for a single note or 2 for an interval
 // chord — the only field the matching/rendering logic actually needs).
 function buildQueue(count, { intervalMode = false, chromaticMode = false } = {}) {
+  const scores = loadTroubleScores(); // read once per session, not once per note
   const queue = [];
   let previous = null;
   for (let i = 0; i < count; i++) {
     const midis = intervalMode
-      ? pickIntervalPair()
-      : [chromaticMode ? pickRandomChromaticNote(previous) : pickRandomNote(previous)];
+      ? pickIntervalPair(scores)
+      : [chromaticMode ? pickRandomChromaticNote(previous, scores) : pickRandomNote(previous, scores)];
     queue.push({ midi: midis[0], midis, isFirstPresentation: true });
     previous = midis[0];
   }
@@ -340,6 +419,7 @@ function onNoteOn(midiNote) {
     flash('incorrect');
     showCorrectiveFeedback(session.current.midis);
     requeue(session.current.midis, session.queue);
+    recordAttemptOutcome(session.current.midis, false);
     session.awaitingAdvance = true;
     setTimeout(() => {
       session.awaitingAdvance = false;
@@ -356,6 +436,7 @@ function onNoteOn(midiNote) {
   if (session.current.isFirstPresentation) {
     session.firstTryCorrect += 1;
   }
+  recordAttemptOutcome(session.current.midis, true);
   flash('correct');
   updateStatsDisplay();
   advance();
@@ -663,7 +744,13 @@ window.__primavista = {
   midiToDisplayName,
   chooseClef,
   pickIntervalPair,
+  pickRandomNote,
   renderStaff,
   onNoteOn,
   startSession,
+  TROUBLE_SCORE_STORAGE_KEY,
+  troubleKeyForNote,
+  troubleKeyForInterval,
+  loadTroubleScores,
+  recordAttemptOutcome,
 };

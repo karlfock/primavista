@@ -8,7 +8,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v2 (shipped):** extended pitch range, clef-ambiguity handling for notes near the staff boundary.
 - **v3 (shipped):** fixed-length sessions, single-attempt notes with corrective feedback, re-queueing of missed notes.
 - **v4 (shipped):** iOS Web MIDI compatibility hardening, on-screen virtual piano.
-- **v5 (this update):** chromatic notes and interval (chord) practice mode.
+- **v5 (shipped):** chromatic notes and interval (chord) practice mode.
+- **v6 (this update):** weighted note selection based on historical misses.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -32,7 +33,7 @@ Previously the app kept waiting after a wrong answer until the correct note was 
 - ~~No chords — single notes only.~~ **Superseded in v5** for interval mode specifically — see below. Plain single-note mode is unaffected and remains the default.
 - No 8va/15ma notation.
 - ~~No software/on-screen piano fallback — MIDI input only.~~ **Superseded in v4** — see Virtual piano below.
-- No user accounts, no backend, no persistence beyond the current browser session.
+- ~~No user accounts, no backend, no persistence beyond the current browser session.~~ **Partially superseded in v6** — per-note/per-interval trouble scores now persist in `localStorage` across sessions (see Weighted note selection below). Still true in every other respect: no accounts, no backend, no server-side data, nothing that syncs across devices or survives clearing browser data.
 ## Pitch range (v2 change)
 Extended at the bottom, unchanged at the top:
 
@@ -142,3 +143,26 @@ This extends to the very first session too: the app now loads into an **idle sta
 - While interval mode is checked, "Chromatic notes" shows as checked and disabled; unchecking interval mode restores whatever the user had it set to before.
 - On page load, the app is idle: no note is shown, stats/staff panels are hidden, and no note input (MIDI or on-screen piano) has any effect until "Start new session" is clicked.
 - All v1/v2/v3/v4 definition-of-done items continue to hold.
+
+## Weighted note selection based on historical misses (v6 change)
+
+Every note and every interval pair has a **trouble score** persisted in `localStorage` (key `primavista:troubleScores`), starting implicitly at 0:
+
+- A miss: `+1`.
+- A correct answer: `-1`, floored at 0. Once a score returns to exactly 0, its entry is deleted from storage entirely rather than kept as an explicit zero — cleanup, and also means "mastered" items are indistinguishable from items never seen, which is the intent.
+- Selection weight for a candidate is `1 + troubleScore`, so something missed 3 times is 4x as likely to be picked as something never missed. With no scores at all (a fresh browser, or everything at baseline), every candidate has weight 1 and selection is uniform — identical to pre-v6 behavior.
+
+**No time-based decay.** A score only goes down by answering that item correctly again — never automatically over calendar time. This was a deliberate simplification: it needs no timestamps, and "you stopped seeing it as often because you got better at it" is a more meaningful trigger than "you stopped seeing it because enough days passed."
+
+**Interval items are keyed by the exact pair** (e.g. `i:65-66`), not by interval type (e.g. "minor 2nd"). Weighting by type would bias toward showing more of whichever type is generally weak, which edges back toward the predictability problem interval mode's design deliberately avoids (see v5 above — a foreseeable interval type lets you read one note and infer the other instead of judging the actual gap). Keying on the specific pair targets real weak spots without making the type itself predictable. One consequence: the interval-pair space is much larger (~800+ possible pairs within A0–C7) than the single-note space (~45–76 depending on chromatic mode), so it takes more repetitions before weighting has a noticeable effect on intervals than on single notes — an inherent tradeoff, not a bug.
+
+**Implementation:** `pickIntervalPair()` changed from a generate-and-retry loop to enumerating every valid `(low, high)` pair once (`INTERVAL_CANDIDATES`) and doing a weighted pick over the full list — simpler to weight correctly than trying to bias a retry loop. `buildQueue()` reads `localStorage` once per session (not once per note) and threads the scores through to each pick call. Scores are updated in `onNoteOn` on every fully-resolved attempt (a genuine miss, or a chord's final correct note) — not on a chord's partial hits along the way.
+
+**Resilience:** `localStorage` reads/writes are wrapped in try/catch (private browsing, disabled storage, quota limits can all throw) and fail silently, falling back to unweighted selection rather than breaking the app.
+
+## Definition of done for v6
+- A note or interval pair missed more often is proportionally more likely to be selected in future sessions, including sessions started after a page reload (scores persist in `localStorage`).
+- A trouble score returns toward baseline (and is deleted once at 0) as the user answers that item correctly again — never through the mere passage of time.
+- Interval trouble scores are tracked per exact pair, not per interval type, so interval *type* remains as unpredictable as in v5.
+- With no browsing history (or a `localStorage` read/write failure), selection is unweighted/uniform, identical to v5 behavior.
+- All v1–v5 definition-of-done items continue to hold.
