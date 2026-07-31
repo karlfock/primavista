@@ -319,4 +319,39 @@ test.describe('MIDI access states', () => {
 
     await expect(page.locator('#stat-attempts')).toHaveText('2 / 25');
   });
+
+  // Regression test: the rescan-on-empty-device-list retry used to call
+  // initMIDI(), which re-requests MIDI access. On the iOS "Web MIDI
+  // Browser" app a second requestMIDIAccess() call fails, which overwrote
+  // a device that connected late (a known quirk of that app) with a false
+  // "MIDI access denied" status even though the input was already working.
+  // The retry must re-poll the already-granted MIDIAccess instead.
+  test('recovers from a late-populated device list without re-requesting MIDI access', async ({ page }) => {
+    await page.addInitScript(() => {
+      let deviceReady = false;
+      setTimeout(() => {
+        deviceReady = true;
+      }, 500);
+      const fakeInput = Object.assign(new EventTarget(), { id: 'fake-1', name: 'ARIUS' });
+      const inputs = {
+        forEach(cb) {
+          if (deviceReady) cb(fakeInput, fakeInput.id, this);
+        },
+      };
+      const outputs = { forEach() {} };
+      window.__requestMIDIAccessCalls = 0;
+      navigator.requestMIDIAccess = async () => {
+        window.__requestMIDIAccessCalls += 1;
+        if (window.__requestMIDIAccessCalls > 1) {
+          throw new Error('denied on second request, as on the buggy iOS shim');
+        }
+        return { inputs, outputs, onstatechange: null };
+      };
+    });
+
+    await page.goto('/index.html');
+    await expect(page.locator('#midi-status')).toContainText('No MIDI input device found');
+    await expect(page.locator('#midi-status')).toContainText('Listening on ARIUS', { timeout: 5000 });
+    expect(await page.evaluate(() => window.__requestMIDIAccessCalls)).toBe(1);
+  });
 });

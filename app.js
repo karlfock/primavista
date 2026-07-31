@@ -308,7 +308,12 @@ function populateDeviceList(midiAccess) {
     if (!rescanTimer) {
       rescanTimer = setTimeout(() => {
         rescanTimer = null;
-        initMIDI();
+        // Re-poll the already-granted MIDIAccess instead of calling
+        // initMIDI() (which re-requests access). Some iOS Web MIDI shims
+        // fail a second requestMIDIAccess() call, which would overwrite
+        // a working connection's status with a false "access denied"
+        // even though the original input is still attached and working.
+        populateDeviceList(midiAccess);
       }, 2000);
     }
     return;
