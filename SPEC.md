@@ -148,9 +148,11 @@ This extends to the very first session too: the app now loads into an **idle sta
 
 Every note and every interval pair has a **trouble score** persisted in `localStorage` (key `primavista:troubleScores`), starting implicitly at 0:
 
-- A miss: `+1`.
-- A correct answer: `-1`, floored at 0. Once a score returns to exactly 0, its entry is deleted from storage entirely rather than kept as an explicit zero — cleanup, and also means "mastered" items are indistinguishable from items never seen, which is the intent.
+- A miss: `+1` (`MISS_TROUBLE_DELTA`).
+- A correct answer: `-0.5` (`CORRECT_TROUBLE_DELTA`), floored at 0. Once a score returns to 0 or below, its entry is deleted from storage entirely rather than kept as an explicit zero — cleanup, and also means "mastered" items are indistinguishable from items never seen, which is the intent.
 - Selection weight for a candidate is `1 + troubleScore`, so something missed 3 times is 4x as likely to be picked as something never missed. With no scores at all (a fresh browser, or everything at baseline), every candidate has weight 1 and selection is uniform — identical to pre-v6 behavior.
+
+**The reward is deliberately smaller than the penalty (2 corrects to offset 1 miss), not symmetric.** A session never ends until every note has been re-queued until answered correctly (v3), so a single miss is *guaranteed* an eventual same-session correct answer. With a symmetric ±1, that guaranteed redemption would guarantee a net-zero score by the time a session ends — confirmed in real use, where two full sessions left almost nothing in `localStorage`. The asymmetry means genuinely hard items keep some elevated weight past their first same-session retry, carrying real signal into future sessions instead of the app's own re-queue mechanic silently erasing it.
 
 **No time-based decay.** A score only goes down by answering that item correctly again — never automatically over calendar time. This was a deliberate simplification: it needs no timestamps, and "you stopped seeing it as often because you got better at it" is a more meaningful trigger than "you stopped seeing it because enough days passed."
 
@@ -163,6 +165,7 @@ Every note and every interval pair has a **trouble score** persisted in `localSt
 ## Definition of done for v6
 - A note or interval pair missed more often is proportionally more likely to be selected in future sessions, including sessions started after a page reload (scores persist in `localStorage`).
 - A trouble score returns toward baseline (and is deleted once at 0) as the user answers that item correctly again — never through the mere passage of time.
+- A single miss followed by a single correct answer (the guaranteed same-session re-queue redemption) does not fully clear a trouble score — it takes a second correct answer to fully offset one miss.
 - Interval trouble scores are tracked per exact pair, not per interval type, so interval *type* remains as unpredictable as in v5.
 - With no browsing history (or a `localStorage` read/write failure), selection is unweighted/uniform, identical to v5 behavior.
 - All v1–v5 definition-of-done items continue to hold.

@@ -587,22 +587,40 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
     expect(keys.pairDescending).toBe('i:65-66');
   });
 
-  test('a miss increments the trouble score; a correct answer decrements it and deletes it at 0', async ({ page }) => {
+  test('a miss increments by MISS_TROUBLE_DELTA; a correct answer decrements by the smaller CORRECT_TROUBLE_DELTA', async ({ page }) => {
     await page.goto('/index.html');
-    const scoresAfterEachStep = await page.evaluate(() => {
+    const { steps, deltas } = await page.evaluate(() => {
       const api = window.__primavista;
       const steps = [];
       api.recordAttemptOutcome([60], false);
       steps.push(api.loadTroubleScores()['n:60']);
-      api.recordAttemptOutcome([60], false);
-      steps.push(api.loadTroubleScores()['n:60']);
       api.recordAttemptOutcome([60], true);
       steps.push(api.loadTroubleScores()['n:60']);
       api.recordAttemptOutcome([60], true);
-      steps.push('n:60' in api.loadTroubleScores()); // should be gone entirely, not just 0
-      return steps;
+      steps.push('n:60' in api.loadTroubleScores()); // fully cleared only after enough corrects
+      return { steps, deltas: { miss: api.MISS_TROUBLE_DELTA, correct: api.CORRECT_TROUBLE_DELTA } };
     });
-    expect(scoresAfterEachStep).toEqual([1, 2, 1, false]);
+    expect(deltas).toEqual({ miss: 1, correct: 0.5 });
+    expect(steps).toEqual([1, 0.5, false]);
+  });
+
+  // This is the specific bug found in real use: the app's own re-queue
+  // mechanic guarantees a miss is followed by an eventual same-session
+  // correct answer (a session doesn't end until every note has been
+  // answered right — see SPEC.md v3), so a symmetric +1/-1 delta would
+  // let that guaranteed redemption silently erase almost every miss
+  // before it could ever influence a future session. The reward must be
+  // smaller than the penalty so some signal survives past that first
+  // same-session retry.
+  test('one miss followed by one correct does not fully erase the trouble score', async ({ page }) => {
+    await page.goto('/index.html');
+    const scoreAfterMissThenCorrect = await page.evaluate(() => {
+      const api = window.__primavista;
+      api.recordAttemptOutcome([60], false); // the miss
+      api.recordAttemptOutcome([60], true); // the guaranteed same-session redemption
+      return api.loadTroubleScores()['n:60'];
+    });
+    expect(scoreAfterMissThenCorrect).toBeGreaterThan(0);
   });
 
   test('a correct answer on an already-0 score stays absent (never goes negative)', async ({ page }) => {

@@ -127,13 +127,25 @@ function pickIntervalPair(scores = {}) {
 }
 
 // --- Weighted note selection (see SPEC.md v6) -----------------------------
-// A per-item "trouble score" persisted in localStorage: +1 on a miss, -1
-// (floored at 0) on a correct answer. Selection weight is 1 + score, so an
-// item you've missed 3 times is 4x as likely to come up as one you've
-// never missed. Once enough correct answers bring a score back to 0, the
-// entry is deleted entirely — it doesn't need a special "forget" step,
-// selection just returns to the same baseline as everything else, and the
-// zero-value entries would just be storage clutter.
+// A per-item "trouble score" persisted in localStorage: +1 on a miss,
+// -0.5 (floored at 0) on a correct answer. Selection weight is 1 + score,
+// so an item you've missed 3 times is 4x as likely to come up as one
+// you've never missed. Once enough correct answers bring a score back to
+// 0, the entry is deleted entirely — it doesn't need a special "forget"
+// step, selection just returns to the same baseline as everything else.
+//
+// The reward is deliberately smaller than the penalty (a full session
+// never ends until every note has been re-queued until correct — see
+// SPEC.md v3 — so a single miss is *guaranteed* an eventual same-session
+// correct answer). With a symmetric +1/-1, that guaranteed redemption
+// would silently cancel almost every miss back to exactly 0 before the
+// session even ends, and near-nothing would carry over to influence
+// future sessions — this was confirmed in real use: after two full
+// sessions, localStorage held almost no trouble scores at all. Requiring
+// two corrects to fully offset one miss means genuinely hard items keep
+// some elevated weight past their first same-session retry.
+const MISS_TROUBLE_DELTA = 1;
+const CORRECT_TROUBLE_DELTA = 0.5;
 //
 // Interval items are keyed by the *exact pair* (e.g. "i:65-66"), not by
 // interval type (e.g. "minor 2nd") — weighting by type would bias toward
@@ -181,8 +193,11 @@ function saveTroubleScores(scores) {
 function recordAttemptOutcome(midis, wasCorrect) {
   const scores = loadTroubleScores();
   const key = troubleKeyFor(midis);
-  const next = wasCorrect ? Math.max(0, (scores[key] || 0) - 1) : (scores[key] || 0) + 1;
-  if (next === 0) {
+  const current = scores[key] || 0;
+  const next = wasCorrect
+    ? Math.max(0, current - CORRECT_TROUBLE_DELTA)
+    : current + MISS_TROUBLE_DELTA;
+  if (next <= 0) {
     delete scores[key];
   } else {
     scores[key] = next;
@@ -749,6 +764,8 @@ window.__primavista = {
   onNoteOn,
   startSession,
   TROUBLE_SCORE_STORAGE_KEY,
+  MISS_TROUBLE_DELTA,
+  CORRECT_TROUBLE_DELTA,
   troubleKeyForNote,
   troubleKeyForInterval,
   loadTroubleScores,
