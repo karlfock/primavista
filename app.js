@@ -371,9 +371,77 @@ async function initMIDI() {
   }
 }
 
+// --- Virtual piano (on-screen keyboard, no MIDI device required) --------
+// Full 88-key range (A0-C8), not the app's A0-C7 quiz range — the top
+// octave (C#7-C8) can never be a correct answer, but it's included for
+// visual fidelity to a real piano.
+const PIANO_MIN_MIDI_NOTE = 21; // A0
+const PIANO_MAX_MIDI_NOTE = 108; // C8
+const PIANO_WHITE_KEY_WIDTH = 36;
+const PIANO_WHITE_KEY_HEIGHT = 140;
+const PIANO_BLACK_KEY_WIDTH = 22;
+const PIANO_BLACK_KEY_HEIGHT = 90;
+
+function buildPiano() {
+  const container = document.getElementById('piano');
+  container.innerHTML = '';
+  container.style.height = `${PIANO_WHITE_KEY_HEIGHT}px`;
+
+  let whiteIndex = 0;
+  const whiteIndexByMidi = new Map();
+  const blackMidiNotes = [];
+
+  for (let midi = PIANO_MIN_MIDI_NOTE; midi <= PIANO_MAX_MIDI_NOTE; midi++) {
+    if (isNaturalMidiNote(midi)) {
+      whiteIndexByMidi.set(midi, whiteIndex);
+      const key = document.createElement('div');
+      key.className = 'piano-key white';
+      key.dataset.midi = midi;
+      key.style.left = `${whiteIndex * PIANO_WHITE_KEY_WIDTH}px`;
+      key.style.width = `${PIANO_WHITE_KEY_WIDTH}px`;
+      key.style.height = `${PIANO_WHITE_KEY_HEIGHT}px`;
+      container.appendChild(key);
+      whiteIndex += 1;
+    } else {
+      blackMidiNotes.push(midi);
+    }
+  }
+
+  container.style.width = `${whiteIndex * PIANO_WHITE_KEY_WIDTH}px`;
+
+  // Every black key's pitch class sits a semitone above a natural (the
+  // white key just below it), which by iteration order already has a
+  // whiteIndex assigned — position it centered on that key's right edge.
+  for (const midi of blackMidiNotes) {
+    const precedingWhiteIndex = whiteIndexByMidi.get(midi - 1);
+    const key = document.createElement('div');
+    key.className = 'piano-key black';
+    key.dataset.midi = midi;
+    key.style.left = `${(precedingWhiteIndex + 1) * PIANO_WHITE_KEY_WIDTH - PIANO_BLACK_KEY_WIDTH / 2}px`;
+    key.style.width = `${PIANO_BLACK_KEY_WIDTH}px`;
+    key.style.height = `${PIANO_BLACK_KEY_HEIGHT}px`;
+    container.appendChild(key);
+  }
+
+  const clearActive = () => {
+    container.querySelectorAll('.piano-key.active').forEach((key) => key.classList.remove('active'));
+  };
+
+  container.addEventListener('pointerdown', (event) => {
+    const key = event.target.closest('.piano-key');
+    if (!key) return;
+    event.preventDefault();
+    key.classList.add('active');
+    onNoteOn(Number(key.dataset.midi));
+  });
+  container.addEventListener('pointerup', clearActive);
+  container.addEventListener('pointercancel', clearActive);
+}
+
 // --- Boot ---------------------------------------------------------
 document.getElementById('play-again-btn').addEventListener('click', startSession);
 initMIDI();
+buildPiano();
 startSession();
 
 // Exposed for the Playwright suite (tests/app.spec.js). This is a plain
@@ -387,6 +455,8 @@ window.__primavista = {
   MAX_MIDI_NOTE,
   AMBIGUITY_LOW,
   AMBIGUITY_HIGH,
+  PIANO_MIN_MIDI_NOTE,
+  PIANO_MAX_MIDI_NOTE,
   SESSION_LENGTH,
   INCORRECT_FEEDBACK_MS,
   STAFF_WIDTH,

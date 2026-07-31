@@ -226,6 +226,58 @@ test.describe('sessions (SPEC.md v3: fixed 25-note sessions)', () => {
   });
 });
 
+test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () => {
+  test('renders a full 88-key piano (A0 to C8), split into naturals and accidentals', async ({ page }) => {
+    await page.goto('/index.html');
+    const { whiteCount, blackCount, rangeSize } = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        whiteCount: document.querySelectorAll('.piano-key.white').length,
+        blackCount: document.querySelectorAll('.piano-key.black').length,
+        rangeSize: api.PIANO_MAX_MIDI_NOTE - api.PIANO_MIN_MIDI_NOTE + 1,
+      };
+    });
+    expect(rangeSize).toBe(88);
+    expect(whiteCount).toBe(52);
+    expect(blackCount).toBe(36);
+    expect(whiteCount + blackCount).toBe(rangeSize);
+  });
+
+  test('includes keys above the quizzed A0-C7 range (e.g. C8), which always register as incorrect', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.piano-key[data-midi="108"]')).toHaveCount(1); // C8
+
+    await page.locator('.piano-key[data-midi="108"]').click();
+
+    await expect(page.locator('#flash-overlay')).toHaveClass(/incorrect/);
+    await expect(page.locator('#stat-correct')).toHaveText('0');
+  });
+
+  test('tapping the correct key advances the session, same as a MIDI note-on', async ({ page }) => {
+    await page.goto('/index.html');
+    const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
+
+    await page.locator(`.piano-key[data-midi="${targetMidi}"]`).click();
+
+    await expect(page.locator('#stat-attempts')).toHaveText('2 / 25');
+    await expect(page.locator('#stat-correct')).toHaveText('1');
+  });
+
+  test('tapping the wrong key shows corrective feedback, same as a MIDI note-on', async ({ page }) => {
+    await page.goto('/index.html');
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.locator(`.piano-key[data-midi="${wrongMidi}"]`).click();
+
+    await expect(page.locator('#flash-overlay')).toHaveClass(/incorrect/);
+    await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#stat-correct')).toHaveText('0');
+  });
+});
+
 test.describe('MIDI access states', () => {
   test('shows an access-denied status when permission is not granted', async ({ page }) => {
     await page.goto('/index.html');

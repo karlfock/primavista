@@ -138,6 +138,48 @@ main {
   z-index: 1;
 }
 
+.piano-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+#piano {
+  position: relative;
+}
+
+.piano-key {
+  position: absolute;
+  top: 0;
+  box-sizing: border-box;
+  border: 1px solid #000;
+  border-radius: 0 0 4px 4px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.piano-key.white {
+  background: #fdfdf8;
+  z-index: 1;
+}
+
+.piano-key.white.active {
+  background: var(--accent);
+}
+
+.piano-key.black {
+  background: #1a1a1a;
+  z-index: 2;
+}
+
+.piano-key.black.active {
+  background: var(--accent);
+}
+
 .summary-panel {
   background: var(--panel);
   border: 1px solid var(--border);
