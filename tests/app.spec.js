@@ -276,6 +276,47 @@ test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () 
     await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
     await expect(page.locator('#stat-correct')).toHaveText('0');
   });
+
+  test('fills a desktop-width viewport with no horizontal scroll, on the piano or the page', async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto('/index.html');
+
+    const { pianoOverflows, pageOverflows } = await page.evaluate(() => {
+      const wrap = document.querySelector('.piano-wrap');
+      return {
+        pianoOverflows: wrap.scrollWidth > wrap.clientWidth,
+        pageOverflows: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    expect(pianoOverflows).toBe(false);
+    expect(pageOverflows).toBe(false);
+  });
+
+  test('falls back to horizontal scroll on a narrow (mobile-width) viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/index.html');
+
+    const pianoOverflows = await page.evaluate(() => {
+      const wrap = document.querySelector('.piano-wrap');
+      return wrap.scrollWidth > wrap.clientWidth;
+    });
+    expect(pianoOverflows).toBe(true);
+  });
+
+  test('recomputes key widths on window resize', async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.goto('/index.html');
+    const wideWidth = await page.evaluate(() =>
+      parseFloat(document.querySelector('.piano-key.white').style.width));
+
+    await page.setViewportSize({ width: 800, height: 900 });
+    await page.waitForTimeout(300); // debounce in the resize handler
+
+    const narrowWidth = await page.evaluate(() =>
+      parseFloat(document.querySelector('.piano-key.white').style.width));
+
+    expect(narrowWidth).toBeLessThan(wideWidth);
+  });
 });
 
 test.describe('MIDI access states', () => {

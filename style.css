@@ -22,6 +22,11 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* The piano breaks out of main's max-width to use the full viewport
+     width (see .piano-wrap) — 100vw can be wider than the visible area
+     when a vertical scrollbar is present, which would otherwise add an
+     unwanted horizontal scrollbar to the whole page. */
+  overflow-x: hidden;
 }
 
 header {
@@ -141,9 +146,15 @@ main {
 .piano-wrap {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
   padding: 0.75rem;
   overflow-x: auto;
+  box-sizing: border-box;
+  /* Break out of main's max-width so the piano can use the full viewport
+     width on desktop (key widths are computed in JS to fill it exactly,
+     avoiding scroll). On narrow/mobile viewports the computed key width
+     hits its floor and this scrolls horizontally, which is expected. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
 }
 
 #piano {

@@ -377,14 +377,44 @@ async function initMIDI() {
 // visual fidelity to a real piano.
 const PIANO_MIN_MIDI_NOTE = 21; // A0
 const PIANO_MAX_MIDI_NOTE = 108; // C8
-const PIANO_WHITE_KEY_WIDTH = 36;
+const PIANO_WHITE_KEY_COUNT = Array.from(
+  { length: PIANO_MAX_MIDI_NOTE - PIANO_MIN_MIDI_NOTE + 1 },
+  (_, i) => PIANO_MIN_MIDI_NOTE + i,
+).filter(isNaturalMidiNote).length;
 const PIANO_WHITE_KEY_HEIGHT = 140;
-const PIANO_BLACK_KEY_WIDTH = 22;
 const PIANO_BLACK_KEY_HEIGHT = 90;
+// Key width is computed from the available viewport width so the piano
+// fills the screen on desktop without scrolling — fitting all 52 white
+// keys with no scroll needs >= 52 * MIN px of width, so MIN has to stay
+// well below typical laptop widths (~1280px) or "no scroll on desktop"
+// would never actually be reachable. On narrow/mobile viewports this
+// floor is always hit and horizontal scroll is expected. MAX keeps keys
+// from becoming oversized blocks on very wide monitors.
+const PIANO_MIN_WHITE_KEY_WIDTH = 16;
+const PIANO_MAX_WHITE_KEY_WIDTH = 48;
+const PIANO_BLACK_TO_WHITE_WIDTH_RATIO = 22 / 36;
+
+function computePianoWhiteKeyWidth(container) {
+  const wrap = container.parentElement;
+  const wrapStyle = getComputedStyle(wrap);
+  const paddingX = parseFloat(wrapStyle.paddingLeft) + parseFloat(wrapStyle.paddingRight);
+  const borderX = parseFloat(wrapStyle.borderLeftWidth) + parseFloat(wrapStyle.borderRightWidth);
+  // Measured from the document root, not the 100vw-wide wrap itself:
+  // `vw` units include the vertical scrollbar's width in most browsers,
+  // which would otherwise make the computed width slightly wider than
+  // what's actually visible whenever a scrollbar is present.
+  const availableWidth = document.documentElement.clientWidth - paddingX - borderX;
+  const idealWidth = availableWidth / PIANO_WHITE_KEY_COUNT;
+  return Math.min(PIANO_MAX_WHITE_KEY_WIDTH, Math.max(PIANO_MIN_WHITE_KEY_WIDTH, idealWidth));
+}
 
 function buildPiano() {
   const container = document.getElementById('piano');
   container.innerHTML = '';
+
+  const whiteKeyWidth = computePianoWhiteKeyWidth(container);
+  const blackKeyWidth = whiteKeyWidth * PIANO_BLACK_TO_WHITE_WIDTH_RATIO;
+
   container.style.height = `${PIANO_WHITE_KEY_HEIGHT}px`;
 
   let whiteIndex = 0;
@@ -397,8 +427,8 @@ function buildPiano() {
       const key = document.createElement('div');
       key.className = 'piano-key white';
       key.dataset.midi = midi;
-      key.style.left = `${whiteIndex * PIANO_WHITE_KEY_WIDTH}px`;
-      key.style.width = `${PIANO_WHITE_KEY_WIDTH}px`;
+      key.style.left = `${whiteIndex * whiteKeyWidth}px`;
+      key.style.width = `${whiteKeyWidth}px`;
       key.style.height = `${PIANO_WHITE_KEY_HEIGHT}px`;
       container.appendChild(key);
       whiteIndex += 1;
@@ -407,7 +437,7 @@ function buildPiano() {
     }
   }
 
-  container.style.width = `${whiteIndex * PIANO_WHITE_KEY_WIDTH}px`;
+  container.style.width = `${whiteIndex * whiteKeyWidth}px`;
 
   // Every black key's pitch class sits a semitone above a natural (the
   // white key just below it), which by iteration order already has a
@@ -417,11 +447,18 @@ function buildPiano() {
     const key = document.createElement('div');
     key.className = 'piano-key black';
     key.dataset.midi = midi;
-    key.style.left = `${(precedingWhiteIndex + 1) * PIANO_WHITE_KEY_WIDTH - PIANO_BLACK_KEY_WIDTH / 2}px`;
-    key.style.width = `${PIANO_BLACK_KEY_WIDTH}px`;
+    key.style.left = `${(precedingWhiteIndex + 1) * whiteKeyWidth - blackKeyWidth / 2}px`;
+    key.style.width = `${blackKeyWidth}px`;
     key.style.height = `${PIANO_BLACK_KEY_HEIGHT}px`;
     container.appendChild(key);
   }
+}
+
+// Key elements are recreated on every buildPiano() call (e.g. on resize),
+// but the container itself is stable, so delegated listeners are attached
+// to it once here rather than re-added on every rebuild.
+function initPianoInteraction() {
+  const container = document.getElementById('piano');
 
   const clearActive = () => {
     container.querySelectorAll('.piano-key.active').forEach((key) => key.classList.remove('active'));
@@ -436,12 +473,19 @@ function buildPiano() {
   });
   container.addEventListener('pointerup', clearActive);
   container.addEventListener('pointercancel', clearActive);
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(buildPiano, 150);
+  });
 }
 
 // --- Boot ---------------------------------------------------------
 document.getElementById('play-again-btn').addEventListener('click', startSession);
 initMIDI();
 buildPiano();
+initPianoInteraction();
 startSession();
 
 // Exposed for the Playwright suite (tests/app.spec.js). This is a plain
