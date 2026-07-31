@@ -248,7 +248,7 @@ test.describe('MIDI access states', () => {
   // See https://github.com/leafo/sightreading.training/issues/8.
   test('lists a device from a MIDIInputMap whose values() iterator is not spec-compliant', async ({ page }) => {
     await page.addInitScript(() => {
-      const fakeInput = { id: 'fake-1', name: 'Yamaha Arius', onmidimessage: null };
+      const fakeInput = Object.assign(new EventTarget(), { id: 'fake-1', name: 'Yamaha Arius' });
       const brokenValuesIterator = () => {
         let done = false;
         return {
@@ -276,5 +276,47 @@ test.describe('MIDI access states', () => {
     await page.goto('/index.html');
     await expect(page.locator('#midi-status')).toContainText('Listening on Yamaha Arius');
     await expect(page.locator('#midi-device')).not.toBeDisabled();
+  });
+
+  // Regression test for the iOS "Web MIDI Browser" app: its MIDIInput
+  // implements EventTarget's addEventListener but never reflects an
+  // `onmidimessage` property assignment into a real listener, so note-on
+  // events silently never reach a handler assigned via `.onmidimessage =`.
+  // The device shows as connected and selected, but playing notes does
+  // nothing. addEventListener must be used instead.
+  test('receives note-on events from a MIDIInput whose onmidimessage property is inert', async ({ page }) => {
+    await page.addInitScript(() => {
+      class InertOnMidiMessageInput extends EventTarget {
+        constructor() {
+          super();
+          this.id = 'fake-1';
+          this.name = 'ARIUS';
+        }
+        open() {
+          return Promise.resolve(this);
+        }
+      }
+      const fakeInput = new InertOnMidiMessageInput();
+      window.__fakeInput = fakeInput;
+      const inputs = {
+        forEach(cb) {
+          cb(fakeInput, fakeInput.id, this);
+        },
+      };
+      const outputs = { forEach() {} };
+      navigator.requestMIDIAccess = async () => ({ inputs, outputs, onstatechange: null });
+    });
+
+    await page.goto('/index.html');
+    await expect(page.locator('#midi-status')).toContainText('Listening on ARIUS');
+
+    const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
+    await page.evaluate((midi) => {
+      const event = new Event('midimessage');
+      event.data = new Uint8Array([0x90, midi, 100]);
+      window.__fakeInput.dispatchEvent(event);
+    }, targetMidi);
+
+    await expect(page.locator('#stat-attempts')).toHaveText('2 / 25');
   });
 });

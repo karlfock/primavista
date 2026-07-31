@@ -263,11 +263,18 @@ function handleMIDIMessage(event) {
 
 function attachInput(input) {
   if (currentInput) {
-    currentInput.onmidimessage = null;
+    currentInput.removeEventListener('midimessage', handleMIDIMessage);
   }
   currentInput = input;
   if (currentInput) {
-    currentInput.onmidimessage = handleMIDIMessage;
+    // Some iOS Web MIDI shims (e.g. the "Web MIDI Browser" app) implement
+    // EventTarget's addEventListener but never wire up the `onmidimessage`
+    // property, so a handler assigned that way silently never fires.
+    // addEventListener works on both real browsers and those shims.
+    currentInput.addEventListener('midimessage', handleMIDIMessage);
+    if (typeof currentInput.open === 'function') {
+      currentInput.open().catch(() => {});
+    }
   }
 }
 
