@@ -353,7 +353,19 @@ async function initMIDI() {
   try {
     const midiAccess = await navigator.requestMIDIAccess();
     populateDeviceList(midiAccess);
-    midiAccess.onstatechange = () => populateDeviceList(midiAccess);
+    try {
+      // Some iOS Web MIDI shims have a buggy onstatechange setter that
+      // throws when assigned. Left unguarded, that exception falls into
+      // the outer catch below and overwrites the status text that
+      // populateDeviceList just set correctly with a false "access
+      // denied" message — even though the device is already attached
+      // and working. Isolate it so a failure here is non-fatal; the
+      // rescan-on-empty-list fallback in populateDeviceList still
+      // covers devices that connect late.
+      midiAccess.onstatechange = () => populateDeviceList(midiAccess);
+    } catch (err) {
+      // Live device-list updates aren't available; non-fatal.
+    }
   } catch (err) {
     setStatus('MIDI access denied. Grant permission and reload.', 'error');
   }

@@ -354,4 +354,37 @@ test.describe('MIDI access states', () => {
     await expect(page.locator('#midi-status')).toContainText('Listening on ARIUS', { timeout: 5000 });
     expect(await page.evaluate(() => window.__requestMIDIAccessCalls)).toBe(1);
   });
+
+  // Regression test: some iOS Web MIDI shims have a buggy onstatechange
+  // setter that throws when assigned. That used to be caught by
+  // initMIDI's outer try/catch, which overwrote an already-successful
+  // "Listening on ARIUS" status with a false "MIDI access denied"
+  // message, even though the device was already attached and working.
+  test('keeps a successful status when assigning MIDIAccess.onstatechange throws', async ({ page }) => {
+    await page.addInitScript(() => {
+      const fakeInput = Object.assign(new EventTarget(), { id: 'fake-1', name: 'ARIUS' });
+      const inputs = {
+        forEach(cb) {
+          cb(fakeInput, fakeInput.id, this);
+        },
+      };
+      const outputs = { forEach() {} };
+      navigator.requestMIDIAccess = async () => {
+        const midiAccess = { inputs, outputs };
+        Object.defineProperty(midiAccess, 'onstatechange', {
+          get() {
+            return null;
+          },
+          set() {
+            throw new Error('shim onstatechange setter is broken');
+          },
+        });
+        return midiAccess;
+      };
+    });
+
+    await page.goto('/index.html');
+    await expect(page.locator('#midi-status')).toContainText('Listening on ARIUS');
+    await expect(page.locator('#midi-device')).not.toBeDisabled();
+  });
 });
