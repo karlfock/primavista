@@ -455,7 +455,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
       const wrong = api.NOTE_RANGE.find((m) => !target.includes(m));
       return {
         wrongMidi: wrong,
-        expectedText: `That was ${target.map(api.midiToDisplayName).join(' + ')}`,
+        expectedText: `That was ${target.map((m) => api.midiToDisplayName(m, target)).join(' + ')}`,
       };
     });
 
@@ -511,6 +511,63 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
     await intervalCheckbox.uncheck();
     await expect(chromaticCheckbox).toBeChecked(); // preference was checked, so it stays checked
     await expect(chromaticCheckbox).toBeEnabled();
+  });
+});
+
+test.describe('chord note spelling avoids same-letter collisions (SPEC.md v5)', () => {
+  // A chord with e.g. F and F# together would otherwise show two
+  // same-letter noteheads distinguished only by an accidental, which is
+  // ambiguous/incorrect notation (an accidental applies to every note of
+  // that letter+octave for the rest of the measure). The sharp note
+  // should be respelled as the enharmonic flat of the next letter (F# ->
+  // Gb) so the two notes land on distinct staff positions.
+  test('respells the sharp note in each of the 5 natural+sharp minor-second collisions', async ({ page }) => {
+    await page.goto('/index.html');
+    const cases = await page.evaluate(() => {
+      const api = window.__primavista;
+      // [naturalMidi, sharpMidi] pairs: C/C#, D/D#, F/F#, G/G#, A/A#
+      const pairs = [[60, 61], [62, 63], [65, 66], [67, 68], [69, 70]];
+      return pairs.map(([natural, sharp]) => ({
+        naturalKey: api.midiToVexKey(natural, [natural, sharp]),
+        sharpKey: api.midiToVexKey(sharp, [natural, sharp]),
+        sharpName: api.midiToDisplayName(sharp, [natural, sharp]),
+      }));
+    });
+    expect(cases).toEqual([
+      { naturalKey: 'c/4', sharpKey: 'db/4', sharpName: 'Db4' },
+      { naturalKey: 'd/4', sharpKey: 'eb/4', sharpName: 'Eb4' },
+      { naturalKey: 'f/4', sharpKey: 'gb/4', sharpName: 'Gb4' },
+      { naturalKey: 'g/4', sharpKey: 'ab/4', sharpName: 'Ab4' },
+      { naturalKey: 'a/4', sharpKey: 'bb/4', sharpName: 'Bb4' },
+    ]);
+  });
+
+  test('does not respell a sharp note with no colliding natural neighbor in the chord', async ({ page }) => {
+    await page.goto('/index.html');
+    const { soloSharp, nonCollidingPair } = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        soloSharp: api.midiToVexKey(66), // F#4 alone, no chord context at all
+        // C#4 + D4: a minor second, but different letters already (no collision)
+        nonCollidingPair: [api.midiToVexKey(61, [61, 62]), api.midiToVexKey(62, [61, 62])],
+      };
+    });
+    expect(soloSharp).toBe('f#/4');
+    expect(nonCollidingPair).toEqual(['c#/4', 'd/4']);
+  });
+
+  test('shows the respelled name in corrective feedback for a colliding chord', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      // Force a known colliding target: F4 + F#4.
+      api.session.current = { midi: 65, midis: [65, 66], clef: 'treble', isFirstPresentation: true };
+    });
+
+    await page.evaluate(() => window.__primavista.onNoteOn(21)); // wrong note
+
+    await expect(page.locator('#corrective-feedback')).toHaveText('That was F4 + Gb4');
   });
 });
 

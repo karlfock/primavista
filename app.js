@@ -35,15 +35,39 @@ function buildChromaticRange(min, max) {
   return notes;
 }
 
-function midiToVexKey(midi) {
-  const [letter, accidental] = PITCH_CLASS_SPELLING[midi % 12];
+// Sharp pitch classes that share a letter with the natural pitch class one
+// semitone below them (C#, D#, F#, G#, A#). A chord containing both — e.g.
+// F and F# together, a minor second — would otherwise show two same-letter
+// noteheads distinguished only by an accidental, which is ambiguous/
+// incorrect notation: an accidental is understood to apply to every note
+// of that same letter+octave for the rest of the measure. Respell the
+// sharp note as the enharmonic flat of the next letter instead (F# -> Gb)
+// so the two notes land on genuinely distinct staff positions, matching
+// how a chromatic cluster like this is actually notated.
+const SHARP_TO_FLAT_RESPELLING = {
+  1: ['d', 'b'], 3: ['e', 'b'], 6: ['g', 'b'], 8: ['a', 'b'], 10: ['b', 'b'],
+};
+
+// chordMidis provides the collision context above; omit it (or pass just
+// [midi]) for a note with no other notes sounding alongside it.
+function spellNote(midi, chordMidis = [midi]) {
+  const pitchClass = midi % 12;
+  const [letter, accidental] = PITCH_CLASS_SPELLING[pitchClass];
   const octave = Math.floor(midi / 12) - 1;
+  const respelling = SHARP_TO_FLAT_RESPELLING[pitchClass];
+  if (accidental && respelling && chordMidis.includes(midi - 1)) {
+    return { letter: respelling[0], accidental: respelling[1], octave };
+  }
+  return { letter, accidental, octave };
+}
+
+function midiToVexKey(midi, chordMidis) {
+  const { letter, accidental, octave } = spellNote(midi, chordMidis);
   return `${letter}${accidental || ''}/${octave}`;
 }
 
-function midiToDisplayName(midi) {
-  const [letter, accidental] = PITCH_CLASS_SPELLING[midi % 12];
-  const octave = Math.floor(midi / 12) - 1;
+function midiToDisplayName(midi, chordMidis) {
+  const { letter, accidental, octave } = spellNote(midi, chordMidis);
   return `${letter.toUpperCase()}${accidental || ''}${octave}`;
 }
 
@@ -176,11 +200,11 @@ function renderStaff(targetMidis, clef) {
     .draw();
 
   const targetStave = clef === 'treble' ? trebleStave : bassStave;
-  const keys = midis.map(midiToVexKey);
+  const keys = midis.map((midi) => midiToVexKey(midi, midis));
 
   const note = new VF.StaveNote({ clef, keys, duration: 'w' });
   midis.forEach((midi, index) => {
-    const [, accidental] = PITCH_CLASS_SPELLING[midi % 12];
+    const { accidental } = spellNote(midi, midis);
     if (accidental) note.addModifier(new VF.Accidental(accidental), index);
   });
 
@@ -206,7 +230,7 @@ function flash(kind) {
 // --- Corrective feedback (shown on misses only, see SPEC.md v3) --------
 function showCorrectiveFeedback(midis) {
   const el = document.getElementById('corrective-feedback');
-  const names = midis.map(midiToDisplayName).join(' + ');
+  const names = midis.map((midi) => midiToDisplayName(midi, midis)).join(' + ');
   el.textContent = `That was ${names}`;
   el.classList.remove('hidden');
 }
