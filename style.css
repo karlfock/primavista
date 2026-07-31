@@ -108,6 +108,24 @@ main {
   color: var(--incorrect);
 }
 
+.practice-options {
+  display: flex;
+  gap: 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+}
+
+.practice-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
 .staff-panel {
   position: relative;
   background: #fdfdf8;

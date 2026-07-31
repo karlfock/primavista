@@ -319,6 +319,103 @@ test.describe('virtual piano (on-screen keyboard, no MIDI device required)', () 
   });
 });
 
+test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
+  test('default mode (both toggles off) still presents single-note targets', async ({ page }) => {
+    await page.goto('/index.html');
+    const midisLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
+    expect(midisLength).toBe(1);
+  });
+
+  test('midiToVexKey and midiToDisplayName spell chromatic notes as sharps', async ({ page }) => {
+    await page.goto('/index.html');
+    const names = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        cSharp4Key: api.midiToVexKey(61),
+        cSharp4Name: api.midiToDisplayName(61),
+        naturalC4Key: api.midiToVexKey(60),
+        naturalC4Name: api.midiToDisplayName(60),
+      };
+    });
+    expect(names.cSharp4Key).toBe('c#/4');
+    expect(names.cSharp4Name).toBe('C#4');
+    expect(names.naturalC4Key).toBe('c/4');
+    expect(names.naturalC4Name).toBe('C4');
+  });
+
+  test('checking "Chromatic notes" restarts the session drawing from all 12 pitch classes', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#chromatic-toggle').check();
+
+    const sawAccidental = await page.evaluate(() => {
+      const api = window.__primavista;
+      for (let i = 0; i < 40; i++) {
+        api.startSession();
+        if (!api.isNaturalMidiNote(api.session.current.midi)) return true;
+      }
+      return false;
+    });
+    expect(sawAccidental).toBe(true);
+  });
+
+  test('pickIntervalPair always returns two distinct in-range notes 1-12 semitones apart', async ({ page }) => {
+    await page.goto('/index.html');
+    const allValid = await page.evaluate(() => {
+      const api = window.__primavista;
+      for (let i = 0; i < 500; i++) {
+        const [low, high] = api.pickIntervalPair();
+        const distance = high - low;
+        if (low < api.MIN_MIDI_NOTE || high > api.MAX_MIDI_NOTE) return false;
+        if (distance < api.MIN_INTERVAL_SEMITONES || distance > api.MAX_INTERVAL_SEMITONES) return false;
+      }
+      return true;
+    });
+    expect(allValid).toBe(true);
+  });
+
+  test('checking "Interval mode" presents a two-note chord target', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+
+    const midisLength = await page.evaluate(() => window.__primavista.session.current.midis.length);
+    expect(midisLength).toBe(2);
+    await expect(page.locator('#staff svg .vf-notehead')).toHaveCount(2);
+  });
+
+  test('playing both interval notes in either order advances the session', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+
+    // Play them in reverse (high, then low) order to confirm order doesn't matter.
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), high);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+
+    await expect(page.locator('#stat-attempts')).toHaveText('2 / 25');
+    await expect(page.locator('#stat-correct')).toHaveText('1');
+  });
+
+  test('a wrong note during an interval attempt fails immediately and names both target notes', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    const { expectedText, wrongMidi } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const target = api.session.current.midis;
+      const wrong = api.NOTE_RANGE.find((m) => !target.includes(m));
+      return {
+        wrongMidi: wrong,
+        expectedText: `That was ${target.map(api.midiToDisplayName).join(' + ')}`,
+      };
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+
+    await expect(page.locator('#flash-overlay')).toHaveClass(/incorrect/);
+    await expect(page.locator('#corrective-feedback')).toHaveText(expectedText);
+    await expect(page.locator('#stat-correct')).toHaveText('0');
+  });
+});
+
 test.describe('MIDI access states', () => {
   test('shows an access-denied status when permission is not granted', async ({ page }) => {
     await page.goto('/index.html');
