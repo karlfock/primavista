@@ -7,7 +7,8 @@
     "start": "npx --yes serve .",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
-    "screenshot": "node scripts/screenshot.mjs"
+    "screenshot": "node scripts/screenshot.mjs",
+    "verify:piano-interval": "node scripts/verify-virtual-piano-interval-input.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0"
