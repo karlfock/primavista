@@ -4,7 +4,7 @@ Ideas for future features, not yet committed to or scheduled. Nothing here is de
 
 Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
 
-**Next number:** 4
+**Next number:** 5
 
 ## 1: Interval practice: melodic mode
 
@@ -17,3 +17,7 @@ Alongside interval mode's current chord (harmonic, both notes together) presenta
 ## 2: Mixing interval/chromatic modes with plain single notes
 
 Currently "Chromatic notes" and "Interval mode" each apply to the *whole* session (captured once at `startSession()`); there's no way to get a session that mixes plain single notes with occasional chords/chromatic notes. Deferred out of v5 specifically to avoid designing a mixing ratio in the first slice — worth revisiting once the individual modes have been used enough to know whether mixing is actually wanted.
+
+## 4: Interval mode: allow intervals bigger than an octave
+
+Interval mode currently caps at 12 semitones (`MAX_INTERVAL_SEMITONES` in `app.js`), i.e. an octave. Raise the cap to include intervals up to a major 10th (16 semitones = octave + major 3rd) — roughly the widest reach playable with one hand, and still useful/realistic to practice reading and judging on the staff, unlike arbitrarily large spans.
