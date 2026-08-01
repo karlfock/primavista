@@ -2,7 +2,11 @@
 
 Ideas for future features, not yet committed to or scheduled. Nothing here is decided — see `SPEC.md` for what's actually shipped and its "Out of scope" lists for related items already ruled out for now.
 
-## Interval practice: melodic mode
+Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
+
+**Next number:** 3
+
+## 1: Interval practice: melodic mode
 
 Alongside interval mode's current chord (harmonic, both notes together) presentation, add a melodic mode — the two notes played one after another rather than simultaneously, with the order (ascending/descending) randomized per note. Randomly choosing between chord and melodic presentation per note was also discussed, so both get practiced.
 
@@ -10,6 +14,6 @@ Alongside interval mode's current chord (harmonic, both notes together) presenta
 
 **Decided (2026-07-31):** looked at how Piano Marvel's "Practice Mode" handles this for inspiration — it's tempo-free (matches what we want) but uses a wait-indefinitely-for-the-correct-note model with multiple attempts, not single-attempt. Explicitly rejected: "I can just sit and try all the notes, that is not a good way of learning." Melodic mode should stay single-attempt, consistent with the rest of the app (chord mode, single-note mode) — first wrong note-on in the sequence fails immediately, same as already planned above. Piano Marvel's model is fine for "hear what a piece sounds like" playback, not for a retrieval-practice drill like this one.
 
-## Mixing interval/chromatic modes with plain single notes
+## 2: Mixing interval/chromatic modes with plain single notes
 
 Currently "Chromatic notes" and "Interval mode" each apply to the *whole* session (captured once at `startSession()`); there's no way to get a session that mixes plain single notes with occasional chords/chromatic notes. Deferred out of v5 specifically to avoid designing a mixing ratio in the first slice — worth revisiting once the individual modes have been used enough to know whether mixing is actually wanted.
