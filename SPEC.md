@@ -10,7 +10,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v4 (shipped):** iOS Web MIDI compatibility hardening, on-screen virtual piano.
 - **v5 (shipped):** chromatic notes and interval (chord) practice mode.
 - **v6 (shipped):** weighted note selection based on historical misses.
-- **v7 (this update):** "Drill my weak spots" session mode built directly on the trouble-score data.
+- **v7 (shipped):** "Drill my weak spots" session mode built directly on the trouble-score data.
+- **v8 (this update):** interval type named in corrective feedback; corrective feedback window doubled; a hint for entering interval-mode chords on the virtual piano.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -190,3 +191,17 @@ Where v6 only *biases* the normal mixed session toward hard items (still drawn f
 - Live stats and the end-of-session summary reflect the drill's own length, not a hardcoded 25; the summary is labeled distinctly from a normal session's.
 - "Play again" after a drill starts another drill; "Play again" after a normal session starts another normal session.
 - All v1–v6 definition-of-done items continue to hold.
+
+## Corrective feedback improvements (v8 change)
+
+Three small, independent additions to the miss path (Core loop / Corrective feedback above), none of which change matching, scoring, or selection:
+
+- **Interval type named alongside the notes.** On a miss in interval mode, corrective feedback now reads e.g. "That was F4 + Gb4 (minor 2nd)" instead of just "That was F4 + Gb4". Pairs the visual gap on the staff with its verbal label (dual coding), which should help build a conceptual map of what each interval actually sounds/looks like rather than pure pattern memorization. The 12 semitone distances map to the standard names minor/major 2nd through 7th, tritone, and octave (`INTERVAL_NAMES`/`intervalNameFor` in `app.js`). This is purely a feedback-text addition — selection and trouble-score keys stay on the exact `(low, high)` pair as in v6, not the interval type, so interval type itself remains just as unpredictable to guess from ahead of time. A single-note miss has no interval to name and is unaffected.
+- **Corrective feedback window doubled.** `INCORRECT_FEEDBACK_MS` goes from 1500ms to 3000ms — there's now more to read (note names plus, in interval mode, the interval name), so the miss needs more time on screen before the app auto-advances.
+- **Virtual-piano interval-mode hint.** A one-line hint ("On the on-screen piano, tap the two notes one at a time — order doesn't matter, and you don't need to hold them down together.") appears below the practice-options bar whenever "Interval mode" is checked, hidden otherwise. This documents behavior that already worked without any code change (see `scripts/verify-virtual-piano-interval-input.mjs`): `onNoteOn`'s pending-notes matching has no timing requirement, so a mouse or a single finger — which can only ever be "down" on one key at a time — can already satisfy a two-note chord target by tapping the notes in sequence, in either order. The hint just makes that discoverable instead of leaving it to be figured out by trial and error.
+
+## Definition of done for v8
+- A miss on a two-note interval target names the interval type in parentheses after the note names; a miss on a single-note target does not.
+- `INCORRECT_FEEDBACK_MS` is 3000ms; corrective feedback and the input block it imposes remain active for the full doubled window before auto-advancing.
+- The interval-mode virtual-piano hint is hidden by default, appears when "Interval mode" is checked, and disappears when unchecked.
+- All v1–v7 definition-of-done items continue to hold.

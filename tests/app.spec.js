@@ -210,7 +210,8 @@ test.describe('core loop (SPEC.md v3: single attempt, corrective feedback, re-qu
     expect(queueMidis).toContain(targetMidi);
 
     // Wait out the corrective-feedback window so input unblocks and we land on the next note.
-    await page.waitForTimeout(1700);
+    const feedbackMs = await page.evaluate(() => window.__primavista.INCORRECT_FEEDBACK_MS);
+    await page.waitForTimeout(feedbackMs + 200);
     await expect(page.locator('#stat-attempts')).toHaveText('2 / 25');
 
     // Play through the queue until the missed note comes back around, then answer it correctly.
@@ -445,7 +446,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
     await expect(page.locator('#stat-correct')).toHaveText('1');
   });
 
-  test('a wrong note during an interval attempt fails immediately and names both target notes', async ({ page }) => {
+  test('a wrong note during an interval attempt fails immediately and names both target notes and the interval type', async ({ page }) => {
     await page.goto('/index.html');
     await page.locator('#interval-toggle').check();
     await startNewSession(page);
@@ -453,9 +454,10 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
       const api = window.__primavista;
       const target = api.session.current.midis;
       const wrong = api.NOTE_RANGE.find((m) => !target.includes(m));
+      const names = target.map((m) => api.midiToDisplayName(m, target)).join(' + ');
       return {
         wrongMidi: wrong,
-        expectedText: `That was ${target.map((m) => api.midiToDisplayName(m, target)).join(' + ')}`,
+        expectedText: `That was ${names} (${api.intervalNameFor(target)})`,
       };
     });
 
@@ -567,7 +569,88 @@ test.describe('chord note spelling avoids same-letter collisions (SPEC.md v5)', 
 
     await page.evaluate(() => window.__primavista.onNoteOn(21)); // wrong note
 
-    await expect(page.locator('#corrective-feedback')).toHaveText('That was F4 + Gb4');
+    await expect(page.locator('#corrective-feedback')).toHaveText('That was F4 + Gb4 (minor 2nd)');
+  });
+});
+
+test.describe('interval type naming in corrective feedback (SPEC.md v8)', () => {
+  test('intervalNameFor names every semitone distance 1-12', async ({ page }) => {
+    await page.goto('/index.html');
+    const names = await page.evaluate(() => {
+      const api = window.__primavista;
+      const result = {};
+      for (let distance = 1; distance <= 12; distance++) {
+        result[distance] = api.intervalNameFor([60, 60 + distance]);
+      }
+      return result;
+    });
+    expect(names).toEqual({
+      1: 'minor 2nd', 2: 'major 2nd', 3: 'minor 3rd', 4: 'major 3rd',
+      5: 'perfect 4th', 6: 'tritone', 7: 'perfect 5th', 8: 'minor 6th',
+      9: 'major 6th', 10: 'minor 7th', 11: 'major 7th', 12: 'octave',
+    });
+  });
+
+  test('intervalNameFor is order-independent, same as troubleKeyForInterval', async ({ page }) => {
+    await page.goto('/index.html');
+    const { ascending, descending } = await page.evaluate(() => {
+      const api = window.__primavista;
+      return { ascending: api.intervalNameFor([60, 67]), descending: api.intervalNameFor([67, 60]) };
+    });
+    expect(ascending).toBe('perfect 5th');
+    expect(descending).toBe('perfect 5th');
+  });
+
+  test('a single-note miss does not show an interval name', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+
+    await expect(page.locator('#corrective-feedback')).not.toContainText('(');
+  });
+});
+
+test.describe('corrective feedback window (SPEC.md v8: doubled to give more time to read)', () => {
+  test('INCORRECT_FEEDBACK_MS is double its original 1500ms', async ({ page }) => {
+    await page.goto('/index.html');
+    const ms = await page.evaluate(() => window.__primavista.INCORRECT_FEEDBACK_MS);
+    expect(ms).toBe(3000);
+  });
+
+  test('corrective feedback and the input block are still active partway through the (now longer) window', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+    // The old window was 1500ms — at 1800ms this would have already
+    // advanced under the old duration, but should not have yet now.
+    await page.waitForTimeout(1800);
+    await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+  });
+});
+
+test.describe('interval-mode virtual piano hint (SPEC.md v8)', () => {
+  test('is hidden by default and shown while interval mode is checked', async ({ page }) => {
+    await page.goto('/index.html');
+    const hint = page.locator('#interval-piano-hint');
+    await expect(hint).toHaveClass(/hidden/);
+
+    await page.locator('#interval-toggle').check();
+    await expect(hint).not.toHaveClass(/hidden/);
+    await expect(hint).toContainText('one at a time');
+
+    await page.locator('#interval-toggle').uncheck();
+    await expect(hint).toHaveClass(/hidden/);
   });
 });
 

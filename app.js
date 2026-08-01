@@ -102,6 +102,23 @@ function pickRandomChromaticNote(exclude, scores = {}) {
 const MIN_INTERVAL_SEMITONES = 1; // minor 2nd
 const MAX_INTERVAL_SEMITONES = 12; // octave
 
+// Standard interval quality names by semitone distance (see BACKLOG.md:
+// "Name the interval type in corrective feedback"). Naming the interval
+// alongside the note names on a miss pairs the visual gap with its verbal
+// label (dual coding) — this is purely a corrective-feedback addition, it
+// doesn't change selection or matching, which stay keyed on the exact
+// (low, high) pair (see troubleKeyForInterval).
+const INTERVAL_NAMES = {
+  1: 'minor 2nd', 2: 'major 2nd', 3: 'minor 3rd', 4: 'major 3rd',
+  5: 'perfect 4th', 6: 'tritone', 7: 'perfect 5th', 8: 'minor 6th',
+  9: 'major 6th', 10: 'minor 7th', 11: 'major 7th', 12: 'octave',
+};
+
+function intervalNameFor(midis) {
+  const [low, high] = [...midis].sort((a, b) => a - b);
+  return INTERVAL_NAMES[high - low];
+}
+
 // Every valid (low, high) pair in the range, enumerated once. Generating
 // only "low + distance = high" (rather than also considering the reverse
 // direction) already covers every distinct pair exactly once, since a
@@ -221,7 +238,10 @@ function pickWeighted(candidates, weightFn) {
 
 // --- Sessions (see SPEC.md v3) -------------------------------------------
 const SESSION_LENGTH = 25;
-const INCORRECT_FEEDBACK_MS = 1500;
+// Doubled from the original 1500ms (see SPEC.md v8) now that a miss can
+// show an interval name alongside the note names — more to read needs
+// more time on screen.
+const INCORRECT_FEEDBACK_MS = 3000;
 
 // Every queue item and session.current carries both `midi` (the first/
 // lowest target note — kept so existing single-note-mode code and tests
@@ -364,7 +384,10 @@ function flash(kind) {
 function showCorrectiveFeedback(midis) {
   const el = document.getElementById('corrective-feedback');
   const names = midis.map((midi) => midiToDisplayName(midi, midis)).join(' + ');
-  el.textContent = `That was ${names}`;
+  // Naming the interval type alongside the notes only applies to a
+  // two-note chord target — a single note has no interval to name.
+  const intervalSuffix = midis.length === 2 ? ` (${intervalNameFor(midis)})` : '';
+  el.textContent = `That was ${names}${intervalSuffix}`;
   el.classList.remove('hidden');
 }
 
@@ -777,6 +800,16 @@ function setDrillButtonAvailability(hasWeakSpots) {
   btn.title = hasWeakSpots ? '' : 'No trouble spots recorded yet — play a session first';
 }
 
+// The virtual piano is a single pointer/finger — it can only tap one key
+// at a time, unlike a real piano where both notes of a chord are struck
+// together. onNoteOn has no timing requirement (see "still needed"
+// pending-notes set below), so two sequential taps already resolve an
+// interval target correctly; this hint just makes that discoverable
+// rather than leaving it to be figured out by trial and error.
+function updateIntervalPianoHint() {
+  document.getElementById('interval-piano-hint').classList.toggle('hidden', !practiceOptions.interval);
+}
+
 function initPracticeOptions() {
   document.getElementById('chromatic-toggle').addEventListener('change', (event) => {
     practiceOptions.chromatic = event.target.checked;
@@ -784,6 +817,7 @@ function initPracticeOptions() {
   document.getElementById('interval-toggle').addEventListener('change', (event) => {
     practiceOptions.interval = event.target.checked;
     updateChromaticCheckboxState();
+    updateIntervalPianoHint();
   });
   document.getElementById('start-session-btn').addEventListener('click', () => startSession('normal'));
   document.getElementById('drill-weak-spots-btn').addEventListener('click', () => startSession('drill'));
@@ -841,4 +875,5 @@ window.__primavista = {
   recordAttemptOutcome,
   buildDrillQueue,
   parseTroubleKey,
+  intervalNameFor,
 };
