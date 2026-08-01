@@ -4,7 +4,7 @@ Ideas for future features, not yet committed to or scheduled. Nothing here is de
 
 Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
 
-**Next number:** 3
+**Next number:** 4
 
 ## 1: Interval practice: melodic mode
 

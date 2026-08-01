@@ -11,7 +11,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v5 (shipped):** chromatic notes and interval (chord) practice mode.
 - **v6 (shipped):** weighted note selection based on historical misses.
 - **v7 (shipped):** "Drill my weak spots" session mode built directly on the trouble-score data.
-- **v8 (this update):** interval type named in corrective feedback; corrective feedback window doubled; a hint for entering interval-mode chords on the virtual piano.
+- **v8 (shipped):** interval type named in corrective feedback; corrective feedback window doubled; a hint for entering interval-mode chords on the virtual piano.
+- **v9 (this update):** corrective feedback window extended to 10s but made closable early; the interval-mode piano hint is also closable.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -202,6 +203,22 @@ Three small, independent additions to the miss path (Core loop / Corrective feed
 
 ## Definition of done for v8
 - A miss on a two-note interval target names the interval type in parentheses after the note names; a miss on a single-note target does not.
-- `INCORRECT_FEEDBACK_MS` is 3000ms; corrective feedback and the input block it imposes remain active for the full doubled window before auto-advancing.
+- `INCORRECT_FEEDBACK_MS` is 3000ms (**superseded in v9** — now 10000ms, see below); corrective feedback and the input block it imposes remain active for the full window before auto-advancing.
 - The interval-mode virtual-piano hint is hidden by default, appears when "Interval mode" is checked, and disappears when unchecked.
 - All v1–v7 definition-of-done items continue to hold.
+
+## Closable info boxes, longer feedback window (v9 change)
+
+Two of v8's additions are now dismissible, and the corrective feedback window is longer:
+
+- **`INCORRECT_FEEDBACK_MS` raised to 10000ms** (from 3000ms) — now that a miss can show note names plus an interval name, 3s wasn't enough to comfortably read it before the app auto-advanced. Ten seconds is a ceiling, not a forced wait (see next point).
+- **Corrective feedback is closable.** The corrective-feedback box now has a close (`×`) button. Clicking it cancels the pending auto-advance timer and resolves immediately — same as if the timer had elapsed (hides the box, unblocks input, advances to the next note) — just on the user's own timing instead of waiting out the full 10s. The timeout handle is tracked (`correctiveFeedbackTimeout` in `app.js`) specifically so this early-dismiss path can cancel it.
+- **The interval-mode virtual-piano hint (v8) is closable too**, with its own close button. Dismissing it hides it immediately and keeps it hidden even if "Interval mode" is subsequently unchecked and re-checked in the same page load — it only reappears after a full page reload. This isn't persisted to `localStorage`; it's a lightweight "I've got it" for the current session, not a permanent preference.
+- **Bug fix alongside this:** starting a new session (`startSession()`) while a previous miss's corrective feedback was still showing used to leave that miss's auto-advance timer running. It would later fire against the *new* session's state and silently skip a note. `startSession()` now cancels any pending corrective-feedback timeout as part of resetting session state.
+
+## Definition of done for v9
+- `INCORRECT_FEEDBACK_MS` is 10000ms.
+- Clicking the corrective-feedback box's close button hides it and advances to the next note immediately, without waiting for the rest of the window to elapse.
+- Clicking the interval-mode piano hint's close button hides it immediately; it stays hidden across unchecking/rechecking "Interval mode" within the same page load.
+- Starting a new session while a miss's corrective feedback is still showing does not later cause an extra, unrequested advance once the old window would have elapsed.
+- All v1–v8 definition-of-done items continue to hold, except where explicitly superseded above.

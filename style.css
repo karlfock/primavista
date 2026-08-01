@@ -224,8 +224,28 @@ main {
   font-size: 1rem;
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
-  pointer-events: none;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Shared close ("x") button for dismissible info boxes (corrective
+   feedback, the interval-mode piano hint) — transparent so it inherits
+   whatever text color its container uses. */
+.dismiss-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.dismiss-btn:hover {
+  opacity: 1;
 }
 
 .piano-wrap {
@@ -284,7 +304,10 @@ main {
   margin: 0;
   color: var(--muted);
   font-size: 0.8rem;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 .idle-panel {

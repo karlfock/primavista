@@ -238,10 +238,11 @@ function pickWeighted(candidates, weightFn) {
 
 // --- Sessions (see SPEC.md v3) -------------------------------------------
 const SESSION_LENGTH = 25;
-// Doubled from the original 1500ms (see SPEC.md v8) now that a miss can
-// show an interval name alongside the note names — more to read needs
-// more time on screen.
-const INCORRECT_FEEDBACK_MS = 3000;
+// Long enough to read the note names (and, in interval mode, the interval
+// name) at a glance without rushing — the corrective-feedback box is also
+// closable (see corrective-feedback-close), so this is a ceiling, not a
+// forced wait.
+const INCORRECT_FEEDBACK_MS = 10000;
 
 // Every queue item and session.current carries both `midi` (the first/
 // lowest target note — kept so existing single-note-mode code and tests
@@ -381,18 +382,34 @@ function flash(kind) {
 }
 
 // --- Corrective feedback (shown on misses only, see SPEC.md v3) --------
+// The auto-advance timeout is tracked so the close button can cancel it and
+// resolve immediately instead of waiting out the rest of INCORRECT_FEEDBACK_MS.
+let correctiveFeedbackTimeout = null;
+
 function showCorrectiveFeedback(midis) {
   const el = document.getElementById('corrective-feedback');
+  const textEl = document.getElementById('corrective-feedback-text');
   const names = midis.map((midi) => midiToDisplayName(midi, midis)).join(' + ');
   // Naming the interval type alongside the notes only applies to a
   // two-note chord target — a single note has no interval to name.
   const intervalSuffix = midis.length === 2 ? ` (${intervalNameFor(midis)})` : '';
-  el.textContent = `That was ${names}${intervalSuffix}`;
+  textEl.textContent = `That was ${names}${intervalSuffix}`;
   el.classList.remove('hidden');
 }
 
 function hideCorrectiveFeedback() {
   document.getElementById('corrective-feedback').classList.add('hidden');
+}
+
+// Lets the miss's auto-advance fire early (from the close button) instead
+// of waiting out the rest of INCORRECT_FEEDBACK_MS — same resolution
+// either way, just on demand rather than strictly on a timer.
+function dismissCorrectiveFeedback() {
+  if (!correctiveFeedbackTimeout) return;
+  clearTimeout(correctiveFeedbackTimeout);
+  correctiveFeedbackTimeout = null;
+  session.awaitingAdvance = false;
+  advance();
 }
 
 // --- Stats display ---------------------------------------------------------
@@ -477,6 +494,15 @@ function startSession(mode = 'normal') {
   // a zero-length session if it's ever invoked another way.
   if (queue.length === 0) return;
 
+  // Starting a session while a previous miss's corrective feedback is
+  // still showing would otherwise leave its auto-advance timer dangling —
+  // it'd fire later and call advance() against this new session's state,
+  // silently skipping a note.
+  if (correctiveFeedbackTimeout) {
+    clearTimeout(correctiveFeedbackTimeout);
+    correctiveFeedbackTimeout = null;
+  }
+
   session.queue = queue;
   session.length = queue.length;
   session.mode = mode;
@@ -516,7 +542,8 @@ function onNoteOn(midiNote) {
     requeue(session.current.midis, session.queue);
     recordAttemptOutcome(session.current.midis, false);
     session.awaitingAdvance = true;
-    setTimeout(() => {
+    correctiveFeedbackTimeout = setTimeout(() => {
+      correctiveFeedbackTimeout = null;
       session.awaitingAdvance = false;
       advance();
     }, INCORRECT_FEEDBACK_MS);
@@ -806,8 +833,16 @@ function setDrillButtonAvailability(hasWeakSpots) {
 // pending-notes set below), so two sequential taps already resolve an
 // interval target correctly; this hint just makes that discoverable
 // rather than leaving it to be figured out by trial and error.
+//
+// Dismissing it (the close button) is a lightweight "I've got it, stop
+// taking up space" — not persisted across reloads, since it only ever
+// shows up while interval mode is checked, and re-checking interval mode
+// after a reload is a fine trigger to show it again.
+let intervalHintDismissed = false;
+
 function updateIntervalPianoHint() {
-  document.getElementById('interval-piano-hint').classList.toggle('hidden', !practiceOptions.interval);
+  const shouldShow = practiceOptions.interval && !intervalHintDismissed;
+  document.getElementById('interval-piano-hint').classList.toggle('hidden', !shouldShow);
 }
 
 function initPracticeOptions() {
@@ -819,6 +854,11 @@ function initPracticeOptions() {
     updateChromaticCheckboxState();
     updateIntervalPianoHint();
   });
+  document.getElementById('interval-piano-hint-close').addEventListener('click', () => {
+    intervalHintDismissed = true;
+    updateIntervalPianoHint();
+  });
+  document.getElementById('corrective-feedback-close').addEventListener('click', dismissCorrectiveFeedback);
   document.getElementById('start-session-btn').addEventListener('click', () => startSession('normal'));
   document.getElementById('drill-weak-spots-btn').addEventListener('click', () => startSession('drill'));
   setDrillButtonAvailability(Object.keys(loadTroubleScores()).length > 0);
@@ -876,4 +916,5 @@ window.__primavista = {
   buildDrillQueue,
   parseTroubleKey,
   intervalNameFor,
+  dismissCorrectiveFeedback,
 };

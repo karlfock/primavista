@@ -464,7 +464,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
     await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
 
     await expect(page.locator('#flash-overlay')).toHaveClass(/incorrect/);
-    await expect(page.locator('#corrective-feedback')).toHaveText(expectedText);
+    await expect(page.locator('#corrective-feedback-text')).toHaveText(expectedText);
     await expect(page.locator('#stat-correct')).toHaveText('0');
   });
 
@@ -569,7 +569,7 @@ test.describe('chord note spelling avoids same-letter collisions (SPEC.md v5)', 
 
     await page.evaluate(() => window.__primavista.onNoteOn(21)); // wrong note
 
-    await expect(page.locator('#corrective-feedback')).toHaveText('That was F4 + Gb4 (minor 2nd)');
+    await expect(page.locator('#corrective-feedback-text')).toHaveText('That was F4 + Gb4 (minor 2nd)');
   });
 });
 
@@ -615,14 +615,14 @@ test.describe('interval type naming in corrective feedback (SPEC.md v8)', () => 
   });
 });
 
-test.describe('corrective feedback window (SPEC.md v8: doubled to give more time to read)', () => {
-  test('INCORRECT_FEEDBACK_MS is double its original 1500ms', async ({ page }) => {
+test.describe('corrective feedback window (SPEC.md v9: 10s ceiling, closable early)', () => {
+  test('INCORRECT_FEEDBACK_MS is 10 seconds', async ({ page }) => {
     await page.goto('/index.html');
     const ms = await page.evaluate(() => window.__primavista.INCORRECT_FEEDBACK_MS);
-    expect(ms).toBe(3000);
+    expect(ms).toBe(10000);
   });
 
-  test('corrective feedback and the input block are still active partway through the (now longer) window', async ({ page }) => {
+  test('corrective feedback and the input block are still active partway through the window', async ({ page }) => {
     await page.goto('/index.html');
     await startNewSession(page);
     const wrongMidi = await page.evaluate(() => {
@@ -631,11 +631,67 @@ test.describe('corrective feedback window (SPEC.md v8: doubled to give more time
     });
 
     await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
-    // The old window was 1500ms — at 1800ms this would have already
-    // advanced under the old duration, but should not have yet now.
-    await page.waitForTimeout(1800);
+    // Comfortably inside the 10s window — should not have auto-advanced yet.
+    await page.waitForTimeout(2000);
     await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
     await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+  });
+
+  test('the close button dismisses feedback and advances immediately, without waiting out the full window', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+    await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
+
+    await page.locator('#corrective-feedback-close').click();
+
+    await expect(page.locator('#corrective-feedback')).toHaveClass(/hidden/);
+    await expect(page.locator('#stat-attempts')).toHaveText('2 / 25'); // advanced to the next note
+    // Confirms the dismiss path actually unblocked input, not just hid the box.
+    const current = await page.evaluate(() => window.__primavista.session.current.midi);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), current);
+    await expect(page.locator('#stat-attempts')).toHaveText('3 / 25');
+  });
+
+  test('starting a new session while feedback is showing cancels the old timer instead of later skipping a note', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi); // leaves the 10s timer pending
+
+    await startNewSession(page); // starts a fresh session before that timer fires
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+
+    // If the old timer weren't cancelled, it would fire here and silently
+    // advance the new session by one note.
+    await page.waitForTimeout(10200);
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+  });
+});
+
+test.describe('interval-mode piano hint is dismissible (SPEC.md v9)', () => {
+  test('the close button hides it, and it stays hidden across unchecking/rechecking interval mode', async ({ page }) => {
+    await page.goto('/index.html');
+    const hint = page.locator('#interval-piano-hint');
+    const intervalCheckbox = page.locator('#interval-toggle');
+
+    await intervalCheckbox.check();
+    await expect(hint).not.toHaveClass(/hidden/);
+
+    await page.locator('#interval-piano-hint-close').click();
+    await expect(hint).toHaveClass(/hidden/);
+
+    await intervalCheckbox.uncheck();
+    await intervalCheckbox.check();
+    await expect(hint).toHaveClass(/hidden/); // stays dismissed, doesn't reappear on re-check
   });
 });
 
