@@ -9,7 +9,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v3 (shipped):** fixed-length sessions, single-attempt notes with corrective feedback, re-queueing of missed notes.
 - **v4 (shipped):** iOS Web MIDI compatibility hardening, on-screen virtual piano.
 - **v5 (shipped):** chromatic notes and interval (chord) practice mode.
-- **v6 (this update):** weighted note selection based on historical misses.
+- **v6 (shipped):** weighted note selection based on historical misses.
+- **v7 (this update):** "Drill my weak spots" session mode built directly on the trouble-score data.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -79,7 +80,7 @@ Ledger-line rendering (via VexFlow) then keys off `(midiNote, clef)` as a pair r
 - Displayed simply on-screen (no charts, no persistence).
 ## Out of scope but worth noting in code structure (unchanged from v1 unless noted)
 - Accidentals: requires tracking "measure state" (a note stays altered until the next bar).
-- Weighted randomization (favor problem notes/ledger-line-heavy notes based on past misses) — requires persistence.
+- ~~Weighted randomization (favor problem notes/ledger-line-heavy notes based on past misses) — requires persistence.~~ **Shipped in v6** (weighting) and taken further in v7 (isolation drilling — see "Drill my weak spots" above).
 - 8va/15ma rendering logic if range is ever extended beyond A0–C7.
 - ~~On-screen piano widget as a fallback for users without a MIDI device.~~ **Shipped in v4.**
 - Randomized key signatures, once accidentals are supported.
@@ -169,3 +170,23 @@ Every note and every interval pair has a **trouble score** persisted in `localSt
 - Interval trouble scores are tracked per exact pair, not per interval type, so interval *type* remains as unpredictable as in v5.
 - With no browsing history (or a `localStorage` read/write failure), selection is unweighted/uniform, identical to v5 behavior.
 - All v1–v5 definition-of-done items continue to hold.
+
+## "Drill my weak spots" session mode (v7 change)
+
+A second session-starting action, alongside "Start new session": a **"Drill my weak spots"** button in the practice-options bar, disabled whenever there are no recorded trouble scores.
+
+Where v6 only *biases* the normal mixed session toward hard items (still drawn from the full range, just weighted), this mode builds a session **entirely** from the current highest-scoring notes/intervals — real isolation practice on exactly what's difficult right now, not diluted into a mostly-easy session.
+
+- **Selection:** every key currently in `localStorage`'s trouble-score map (both `n:` note keys and `i:` interval-pair keys) is a candidate, sorted by score descending, capped at the same length as a normal session (`SESSION_LENGTH` — reused rather than introducing a second, separate limit; with fewer weak spots than that, the session is simply shorter, which is what makes it "short" without needing its own cap). Presentation order is shuffled once up front so the single worst item doesn't always land first.
+- **No new mechanic for "practiced until they clear":** a drill session reuses the existing single-attempt + requeue-until-correct loop unchanged (see Core loop above) — restricting the queue to just the weak items is the whole feature. A miss still requeues at a random later position and still updates the trouble score exactly as it would in a normal session, so playing a drill session continues to refine the same data it was built from.
+- **Session length is dynamic**, not the fixed 25: `stat-attempts` and the summary screen both show "n / (however many weak spots were drilled)" rather than always "/ 25". The summary heading also reads "Weak-spot drill complete" instead of "Session complete" so it's clear which kind of session just finished.
+- **"Play again" repeats the mode that just finished** — finishing a drill offers another drill (rebuilt from current scores, which may have shifted during play), finishing a normal session offers another normal session. The practice-option checkboxes (chromatic notes / interval mode) don't apply to drill sessions — a drill item's shape (single note vs. two-note chord) is already fixed by which kind of item it was when it built up its trouble score.
+- **Button availability** reacts live to trouble-score changes during play (not just at session start/end), since a miss recorded mid-session can create the first-ever weak spot and should make the button usable without a reload.
+
+## Definition of done for v7
+- "Drill my weak spots" is disabled with zero recorded trouble scores and becomes enabled as soon as one is recorded (including mid-session).
+- Clicking it starts a session containing only items with a currently-recorded trouble score, sized to the number of such items (capped at `SESSION_LENGTH`), highest-scoring items kept when capping.
+- The session behaves exactly like a normal session otherwise: single attempt per note, corrective feedback on a miss, missed items re-queued until answered correctly, trouble scores updated on every resolved attempt.
+- Live stats and the end-of-session summary reflect the drill's own length, not a hardcoded 25; the summary is labeled distinctly from a normal session's.
+- "Play again" after a drill starts another drill; "Play again" after a normal session starts another normal session.
+- All v1–v6 definition-of-done items continue to hold.

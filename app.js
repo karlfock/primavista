@@ -203,6 +203,7 @@ function recordAttemptOutcome(midis, wasCorrect) {
     scores[key] = next;
   }
   saveTroubleScores(scores);
+  setDrillButtonAvailability(Object.keys(scores).length > 0);
 }
 
 // Weighted random pick: each candidate's weight is 1 + its trouble score,
@@ -249,6 +250,42 @@ function requeue(midis, queue) {
   queue.splice(insertAt, 0, item);
 }
 
+// --- "Drill my weak spots" session mode (see SPEC.md v7) -----------------
+// Built directly on the trouble-score data above, but going further than
+// just biasing a normal mixed session: a session made entirely from the
+// current highest-scoring notes/intervals, so practice time goes straight
+// at what's actually difficult right now instead of being diluted into a
+// mostly-easy session. Reuses the existing single-attempt +
+// requeue-until-correct loop unchanged (see requeue/onNoteOn) — "practiced
+// until it clears" falls straight out of that mechanic once the queue is
+// restricted to just the weak items, so no new mechanic is needed here.
+function parseTroubleKey(key) {
+  if (key.startsWith('n:')) return [Number(key.slice(2))];
+  return key.slice(2).split('-').map(Number);
+}
+
+// Takes the current highest-scoring items, capped at the same length as a
+// normal session — drill sessions are meant to be short, and with few
+// weak spots recorded that's already true without needing a separate,
+// smaller limit of its own.
+function buildDrillQueue(scores) {
+  const midisList = Object.entries(scores)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, SESSION_LENGTH)
+    .map(([key]) => parseTroubleKey(key));
+
+  // Otherwise the first pass through the queue would always start with the
+  // single worst item in the same spot every time — re-queue order on a
+  // miss is already randomized (see requeue above); this does the same for
+  // the initial pass.
+  for (let i = midisList.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [midisList[i], midisList[j]] = [midisList[j], midisList[i]];
+  }
+
+  return midisList.map((midis) => ({ midi: midis[0], midis, isFirstPresentation: true }));
+}
+
 // --- App state ---------------------------------------------------------
 const session = {
   queue: [],
@@ -259,6 +296,8 @@ const session = {
   responseTimes: [],
   finished: false,
   awaitingAdvance: false, // true while corrective feedback is shown after a miss
+  length: SESSION_LENGTH, // notes needed to complete the session; dynamic for drill sessions
+  mode: 'normal', // 'normal' | 'drill' — which queue-building strategy "Play again" repeats
 };
 
 // --- Staff rendering (VexFlow grand staff) ------------------------------
@@ -344,8 +383,8 @@ function formatResponseTime(avgMs) {
 }
 
 function updateStatsDisplay() {
-  const { presentedCount, firstTryCorrect, responseTimes } = session;
-  document.getElementById('stat-attempts').textContent = `${presentedCount} / ${SESSION_LENGTH}`;
+  const { presentedCount, firstTryCorrect, responseTimes, length } = session;
+  document.getElementById('stat-attempts').textContent = `${presentedCount} / ${length}`;
   document.getElementById('stat-correct').textContent = firstTryCorrect;
 
   const accuracyEl = document.getElementById('stat-accuracy');
@@ -387,19 +426,37 @@ function endSession() {
 }
 
 function showSummary() {
+  document.getElementById('summary-heading').textContent =
+    session.mode === 'drill' ? 'Weak-spot drill complete' : 'Session complete';
   document.getElementById('summary-correct').textContent = session.firstTryCorrect;
-  document.getElementById('summary-total').textContent = SESSION_LENGTH;
+  document.getElementById('summary-total').textContent = session.length;
   document.getElementById('summary-avg-time').textContent = formatResponseTime(averageResponseTime(session.responseTimes));
   document.getElementById('staff-panel').classList.add('hidden');
   document.getElementById('stats-panel').classList.add('hidden');
   document.getElementById('summary-panel').classList.remove('hidden');
 }
 
-function startSession() {
-  session.queue = buildQueue(SESSION_LENGTH, {
-    intervalMode: practiceOptions.interval,
-    chromaticMode: practiceOptions.chromatic,
-  });
+// mode: 'normal' picks a fresh weighted queue from the full range (see
+// SPEC.md v6); 'drill' builds one from just the current weak spots (see
+// "Drill my weak spots" above). "Play again" re-invokes whichever mode
+// just finished (session.mode), so finishing a drill offers another drill
+// rather than silently dropping back to a normal session.
+function startSession(mode = 'normal') {
+  const queue = mode === 'drill'
+    ? buildDrillQueue(loadTroubleScores())
+    : buildQueue(SESSION_LENGTH, {
+        intervalMode: practiceOptions.interval,
+        chromaticMode: practiceOptions.chromatic,
+      });
+  // Drill mode with no recorded trouble scores has nothing to queue. The
+  // button that triggers this is disabled in that case (see
+  // setDrillButtonAvailability), but guard here too rather than starting
+  // a zero-length session if it's ever invoked another way.
+  if (queue.length === 0) return;
+
+  session.queue = queue;
+  session.length = queue.length;
+  session.mode = mode;
   session.current = null;
   session.presentedCount = 0;
   session.firstTryCorrect = 0;
@@ -710,6 +767,16 @@ function updateChromaticCheckboxState() {
     : '';
 }
 
+// Disabled until at least one trouble score exists (see "Drill my weak
+// spots" above) — there's nothing to build a drill queue from otherwise.
+// Called on boot and after every recordAttemptOutcome, so it stays in
+// sync with scores changing during live play, not just at session start.
+function setDrillButtonAvailability(hasWeakSpots) {
+  const btn = document.getElementById('drill-weak-spots-btn');
+  btn.disabled = !hasWeakSpots;
+  btn.title = hasWeakSpots ? '' : 'No trouble spots recorded yet — play a session first';
+}
+
 function initPracticeOptions() {
   document.getElementById('chromatic-toggle').addEventListener('change', (event) => {
     practiceOptions.chromatic = event.target.checked;
@@ -718,7 +785,9 @@ function initPracticeOptions() {
     practiceOptions.interval = event.target.checked;
     updateChromaticCheckboxState();
   });
-  document.getElementById('start-session-btn').addEventListener('click', startSession);
+  document.getElementById('start-session-btn').addEventListener('click', () => startSession('normal'));
+  document.getElementById('drill-weak-spots-btn').addEventListener('click', () => startSession('drill'));
+  setDrillButtonAvailability(Object.keys(loadTroubleScores()).length > 0);
 }
 
 // --- Boot ---------------------------------------------------------
@@ -727,7 +796,7 @@ function initPracticeOptions() {
 // clicks "Start new session", and onNoteOn's existing guard clause
 // (`!session.current`) already no-ops any note input — MIDI or the
 // on-screen piano — until then, so nothing extra is needed there.
-document.getElementById('play-again-btn').addEventListener('click', startSession);
+document.getElementById('play-again-btn').addEventListener('click', () => startSession(session.mode));
 initMIDI();
 buildPiano();
 initPianoInteraction();
@@ -770,4 +839,6 @@ window.__primavista = {
   troubleKeyForInterval,
   loadTroubleScores,
   recordAttemptOutcome,
+  buildDrillQueue,
+  parseTroubleKey,
 };

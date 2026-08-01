@@ -753,6 +753,141 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
   });
 });
 
+test.describe('"Drill my weak spots" session mode (SPEC.md v7)', () => {
+  test('is disabled with no trouble scores and enabled once one is recorded', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#drill-weak-spots-btn')).toBeDisabled();
+
+    await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+
+    await expect(page.locator('#drill-weak-spots-btn')).toBeEnabled();
+  });
+
+  test('builds a session made only of items with a recorded trouble score', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      api.recordAttemptOutcome([60], false); // n:60
+      api.recordAttemptOutcome([65, 66], false); // i:65-66
+    });
+
+    await page.locator('#drill-weak-spots-btn').click();
+
+    const { length, allWeak, shapes } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const weakKeys = new Set(Object.keys(api.loadTroubleScores()));
+      const items = [api.session.current, ...api.session.queue];
+      const keyFor = (midis) => (midis.length === 1
+        ? api.troubleKeyForNote(midis[0])
+        : api.troubleKeyForInterval(midis));
+      return {
+        length: api.session.length,
+        allWeak: items.every((item) => weakKeys.has(keyFor(item.midis))),
+        shapes: items.map((item) => item.midis.length).sort(),
+      };
+    });
+    expect(length).toBe(2);
+    expect(allWeak).toBe(true);
+    expect(shapes).toEqual([1, 2]); // single note stays single, interval pair stays a chord
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 2');
+  });
+
+  test('caps the drill queue at SESSION_LENGTH even with more weak spots recorded', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      for (let i = 0; i < api.SESSION_LENGTH + 10; i++) {
+        api.recordAttemptOutcome([api.MIN_MIDI_NOTE + i], false);
+      }
+    });
+
+    await page.locator('#drill-weak-spots-btn').click();
+
+    const length = await page.evaluate(() => window.__primavista.session.length);
+    expect(length).toBe(25);
+  });
+
+  test('ends with a summary sized to the drill length, not the fixed 25', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+    await page.locator('#drill-weak-spots-btn').click();
+
+    const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
+    await page.evaluate((midi) => window.__primavista.onNoteOn(midi), targetMidi);
+
+    await expect(page.locator('#summary-panel')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#summary-heading')).toHaveText('Weak-spot drill complete');
+    await expect(page.locator('#summary-total')).toHaveText('1');
+    await expect(page.locator('#summary-correct')).toHaveText('1');
+  });
+
+  test('"Play again" after a drill session starts another drill session', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+    await page.locator('#drill-weak-spots-btn').click();
+
+    const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
+    await page.evaluate((midi) => window.__primavista.onNoteOn(midi), targetMidi);
+    await expect(page.locator('#summary-panel')).not.toHaveClass(/hidden/);
+
+    await page.click('#play-again-btn');
+
+    const mode = await page.evaluate(() => window.__primavista.session.mode);
+    expect(mode).toBe('drill');
+  });
+
+  test('"Play again" after a normal session starts another normal 25-note session', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+
+    for (let i = 0; i < SESSION_LENGTH_GUARD; i++) {
+      const finished = await page.evaluate(() => window.__primavista.session.finished);
+      if (finished) break;
+      const current = await page.evaluate(() => window.__primavista.session.current.midi);
+      await page.evaluate((midi) => window.__primavista.onNoteOn(midi), current);
+    }
+    await expect(page.locator('#summary-panel')).not.toHaveClass(/hidden/);
+
+    await page.click('#play-again-btn');
+
+    const { mode, length } = await page.evaluate(() => ({
+      mode: window.__primavista.session.mode,
+      length: window.__primavista.session.length,
+    }));
+    expect(mode).toBe('normal');
+    expect(length).toBe(25);
+  });
+
+  test('parseTroubleKey parses note and interval trouble keys back into midi arrays', async ({ page }) => {
+    await page.goto('/index.html');
+    const parsed = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        note: api.parseTroubleKey('n:60'),
+        interval: api.parseTroubleKey('i:65-66'),
+      };
+    });
+    expect(parsed.note).toEqual([60]);
+    expect(parsed.interval).toEqual([65, 66]);
+  });
+
+  test('buildDrillQueue keeps only the highest-scoring items when capping', async ({ page }) => {
+    await page.goto('/index.html');
+    const includesLowestScored = await page.evaluate(() => {
+      const api = window.__primavista;
+      const scores = {};
+      for (let i = 0; i < api.SESSION_LENGTH + 5; i++) {
+        scores[`n:${api.MIN_MIDI_NOTE + i}`] = i; // ascending scores, 0 through 29
+      }
+      const queue = api.buildDrillQueue(scores);
+      const queuedMidis = new Set(queue.map((item) => item.midi));
+      // The 5 lowest-scored items (score 0-4) should be dropped by the cap.
+      return [0, 1, 2, 3, 4].some((i) => queuedMidis.has(api.MIN_MIDI_NOTE + i));
+    });
+    expect(includesLowestScored).toBe(false);
+  });
+});
+
 test.describe('MIDI access states', () => {
   test('shows an access-denied status when permission is not granted', async ({ page }) => {
     await page.goto('/index.html');
