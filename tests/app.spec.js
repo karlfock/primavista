@@ -677,6 +677,70 @@ test.describe('corrective feedback window (SPEC.md v9: 10s ceiling, closable ear
   });
 });
 
+test.describe('corrective feedback pause button (SPEC.md v10)', () => {
+  test('pausing stops the countdown — feedback stays up and input stays blocked past the normal window', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+    await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
+
+    await page.locator('#corrective-feedback-pause').click();
+    await expect(page.locator('#corrective-feedback-pause')).toHaveClass(/hidden/); // nothing left to pause
+
+    const incorrectFeedbackMs = await page.evaluate(() => window.__primavista.INCORRECT_FEEDBACK_MS);
+    await page.waitForTimeout(incorrectFeedbackMs + 500); // well past the normal auto-advance window
+    await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+  });
+
+  test('the close button still resolves a paused miss and advances the session', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+    await page.locator('#corrective-feedback-pause').click();
+    await page.locator('#corrective-feedback-close').click();
+
+    await expect(page.locator('#corrective-feedback')).toHaveClass(/hidden/);
+    await expect(page.locator('#stat-attempts')).toHaveText('2 / 25');
+    // Confirms the close path actually unblocked input, not just hid the box.
+    const current = await page.evaluate(() => window.__primavista.session.current.midi);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), current);
+    await expect(page.locator('#stat-attempts')).toHaveText('3 / 25');
+  });
+
+  test('a fresh miss shows the pause button again, even if the previous miss was paused', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+    await page.locator('#corrective-feedback-pause').click();
+    await expect(page.locator('#corrective-feedback-pause')).toHaveClass(/hidden/);
+    await page.locator('#corrective-feedback-close').click();
+
+    const nextWrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), nextWrongMidi);
+
+    await expect(page.locator('#corrective-feedback-pause')).not.toHaveClass(/hidden/);
+  });
+});
+
 test.describe('interval-mode piano hint is dismissible (SPEC.md v9)', () => {
   test('the close button hides it, and it stays hidden across unchecking/rechecking interval mode', async ({ page }) => {
     await page.goto('/index.html');

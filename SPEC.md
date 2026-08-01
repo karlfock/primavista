@@ -12,7 +12,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v6 (shipped):** weighted note selection based on historical misses.
 - **v7 (shipped):** "Drill my weak spots" session mode built directly on the trouble-score data.
 - **v8 (shipped):** interval type named in corrective feedback; corrective feedback window doubled; a hint for entering interval-mode chords on the virtual piano.
-- **v9 (this update):** corrective feedback window extended to 10s but made closable early; the interval-mode piano hint is also closable.
+- **v9 (shipped):** corrective feedback window extended to 10s but made closable early; the interval-mode piano hint is also closable.
+- **v10 (this update):** corrective feedback also gets a pause button, for reading it at your own pace instead of racing a countdown.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -222,3 +223,20 @@ Two of v8's additions are now dismissible, and the corrective feedback window is
 - Clicking the interval-mode piano hint's close button hides it immediately; it stays hidden across unchecking/rechecking "Interval mode" within the same page load.
 - Starting a new session while a miss's corrective feedback is still showing does not later cause an extra, unrequested advance once the old window would have elapsed.
 - All v1–v8 definition-of-done items continue to hold, except where explicitly superseded above.
+
+## Corrective feedback pause button (v10 change)
+
+Raised directly from real use on an iPad at the piano, where there's no mouse to hover-to-pause (the standard toast-notification pattern): even a 10s window (v9) is still a countdown competing with actually reading the feedback, and the only prior escape hatch (the close button) both stops it *and* advances — there was no way to just stop it from disappearing without also moving on.
+
+The corrective-feedback box gets a second button, a pause (`⏸`) icon, next to the existing close (`×`):
+
+- **Pause stops the countdown without closing the box or advancing.** It clears the same tracked timeout the close button uses (`correctiveFeedbackTimeout`), but that's the *only* thing it does — the box stays up, input stays blocked, indefinitely, until the close button is used. This is deliberately not a pause/resume toggle: once paused, the only way to move forward is the close button, since there's nothing meaningful left to "resume" (the countdown is simply gone for that miss).
+- **The pause button hides itself once used** — nothing left for it to do until the next miss, so leaving it visible and clickable would be confusing/inert. `showCorrectiveFeedback()` un-hides it again for every fresh miss.
+- **The close button had to change its guard.** It previously checked "is there a pending timeout" to decide whether there's anything to dismiss — but a paused miss has already cleared that timeout while still very much needing to be dismissible. It now guards on `session.awaitingAdvance` instead, which stays true for the whole miss regardless of whether the countdown is running or paused.
+- Verified manually via `scripts/verify-corrective-feedback-pause.mjs` (`npm run verify:pause`), a committed diagnostic in the same style as `verify-virtual-piano-interval-input.mjs`.
+
+## Definition of done for v10
+- Clicking the pause button stops the auto-advance countdown; the corrective-feedback box and the input block it imposes remain in place indefinitely (tested past the full 10s window) until the close button is clicked.
+- The pause button hides itself once clicked, and reappears for the next miss's feedback.
+- The close button still hides the box and advances the session after a miss has been paused.
+- All v1–v9 definition-of-done items continue to hold.

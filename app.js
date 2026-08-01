@@ -239,9 +239,10 @@ function pickWeighted(candidates, weightFn) {
 // --- Sessions (see SPEC.md v3) -------------------------------------------
 const SESSION_LENGTH = 25;
 // Long enough to read the note names (and, in interval mode, the interval
-// name) at a glance without rushing — the corrective-feedback box is also
-// closable (see corrective-feedback-close), so this is a ceiling, not a
-// forced wait.
+// name) at a glance without rushing — the corrective-feedback box can also
+// be paused (stop the countdown) or closed early (see
+// pauseCorrectiveFeedback/dismissCorrectiveFeedback), so this is a
+// ceiling, not a forced wait.
 const INCORRECT_FEEDBACK_MS = 10000;
 
 // Every queue item and session.current carries both `midi` (the first/
@@ -394,6 +395,9 @@ function showCorrectiveFeedback(midis) {
   // two-note chord target — a single note has no interval to name.
   const intervalSuffix = midis.length === 2 ? ` (${intervalNameFor(midis)})` : '';
   textEl.textContent = `That was ${names}${intervalSuffix}`;
+  // Reset from a possible pause on a previous miss — there's a fresh
+  // countdown to pause this time.
+  document.getElementById('corrective-feedback-pause').classList.remove('hidden');
   el.classList.remove('hidden');
 }
 
@@ -401,13 +405,30 @@ function hideCorrectiveFeedback() {
   document.getElementById('corrective-feedback').classList.add('hidden');
 }
 
-// Lets the miss's auto-advance fire early (from the close button) instead
-// of waiting out the rest of INCORRECT_FEEDBACK_MS — same resolution
-// either way, just on demand rather than strictly on a timer.
-function dismissCorrectiveFeedback() {
+// Stops the countdown without closing the box or advancing — for reading
+// the feedback for as long as needed on a touch device (no hover-to-pause
+// available), rather than racing a fixed window. Hides the pause button
+// itself afterward (nothing left to pause); the close button is still the
+// only way to actually move on once paused.
+function pauseCorrectiveFeedback() {
   if (!correctiveFeedbackTimeout) return;
   clearTimeout(correctiveFeedbackTimeout);
   correctiveFeedbackTimeout = null;
+  document.getElementById('corrective-feedback-pause').classList.add('hidden');
+}
+
+// Lets the miss's auto-advance fire early (from the close button) instead
+// of waiting out the rest of INCORRECT_FEEDBACK_MS — same resolution
+// either way, just on demand rather than strictly on a timer. Guards on
+// session.awaitingAdvance rather than the timeout handle, since a paused
+// miss (see pauseCorrectiveFeedback) has already cleared the timeout but
+// still needs to be dismissible.
+function dismissCorrectiveFeedback() {
+  if (!session.awaitingAdvance) return;
+  if (correctiveFeedbackTimeout) {
+    clearTimeout(correctiveFeedbackTimeout);
+    correctiveFeedbackTimeout = null;
+  }
   session.awaitingAdvance = false;
   advance();
 }
@@ -858,6 +879,7 @@ function initPracticeOptions() {
     intervalHintDismissed = true;
     updateIntervalPianoHint();
   });
+  document.getElementById('corrective-feedback-pause').addEventListener('click', pauseCorrectiveFeedback);
   document.getElementById('corrective-feedback-close').addEventListener('click', dismissCorrectiveFeedback);
   document.getElementById('start-session-btn').addEventListener('click', () => startSession('normal'));
   document.getElementById('drill-weak-spots-btn').addEventListener('click', () => startSession('drill'));
@@ -917,4 +939,5 @@ window.__primavista = {
   parseTroubleKey,
   intervalNameFor,
   dismissCorrectiveFeedback,
+  pauseCorrectiveFeedback,
 };
