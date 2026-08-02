@@ -167,21 +167,30 @@ function keyImpliedPitchClass(letter, keyName) {
 
 const ACCIDENTAL_SYMBOL_BY_OFFSET = { '-2': 'bb', '-1': 'b', 0: 'n', 1: '#', 2: '##' };
 
-// For a chromatic (out-of-key) pitch, returns either a single resolved
-// spelling (an exact diatonic match, or a natural that cancels an
-// existing key alteration — both unambiguous) or, when genuinely neither
-// applies, the two competing single-accidental candidates (sharp of the
-// lower diatonic neighbor letter, flat of the upper one) for the caller to
-// choose between. Separated from the actual choosing (see spellInKey/
-// spellChordInKey below) so a chord can avoid a same-letter collision by
-// picking deliberately instead of coincidentally.
+// Returns every viable spelling for a pitch class in a key, ranked
+// best-first:
+// - An exact diatonic match is the only entry — a diatonic note has no
+//   reasonable fallback, since respelling it off its natural scale-degree
+//   letter would itself be nonstandard notation, not just a stylistic
+//   alternative.
+// - Otherwise, a natural that cancels an existing key-signature
+//   alteration ranks first when one exists (the standard, unambiguous
+//   choice — at most one candidate can ever qualify, since two different
+//   letters never share a natural pitch). The other neighbor-letter
+//   candidate still comes back after it, purely as a chord-collision
+//   fallback (see spellChordInKey) — it may need a double accidental
+//   (e.g. Cb major's C natural: natural-cancel "C natural" vs. the
+//   fallback "D double-flat"), so it's never used as a first choice in
+//   isolation, only when the preferred spelling would collide with
+//   another note in the same chord.
+// - With no natural-cancel available, the two single-accidental
+//   candidates (sharp of the lower diatonic neighbor letter, flat of the
+//   upper one) are genuinely tied — real notation has no universally
+//   "correct" choice there either.
 function spellCandidatesInKey(pitchClass, keyName) {
   for (const letter of LETTERS) {
     if (keyImpliedPitchClass(letter, keyName) === pitchClass) {
-      // Diatonic to this key — the key signature at the clef already
-      // covers the alteration (if any), so no accidental glyph is drawn
-      // on the note itself, even though the pitch itself may be altered.
-      return { resolved: { letter, accidental: null, offset: KEY_ACCIDENTALS[keyName][letter] } };
+      return [{ letter, accidental: null, offset: KEY_ACCIDENTALS[keyName][letter] }];
     }
   }
 
@@ -199,24 +208,26 @@ function spellCandidatesInKey(pitchClass, keyName) {
     if (offset < -6) offset += 12;
     candidates.push({ letter, accidental: ACCIDENTAL_SYMBOL_BY_OFFSET[offset], offset });
   }
+  candidates.sort((a, b) => (a.offset === 0 ? -1 : b.offset === 0 ? 1 : 0));
+  return candidates;
+}
 
-  // A natural that cancels an existing key-signature alteration is the
-  // standard, expected notation choice whenever it's available (and at
-  // most one candidate can ever qualify, since two different letters
-  // never share a natural pitch) — no real ambiguity in that case.
-  const naturalCancel = candidates.find((c) => c.offset === 0);
-  if (naturalCancel) return { resolved: naturalCancel };
+// True only when `options[0]` is the deterministic, unambiguous choice
+// (a diatonic match, or the unique natural-cancel) — as opposed to a
+// genuine coin-flip tie between two equally valid candidates.
+function isUniquelyPreferred(options) {
+  return options.length === 1 || options[0].offset === 0;
+}
 
-  return { candidates };
+function pickFrom(options) {
+  return isUniquelyPreferred(options) ? options[0] : options[Math.floor(Math.random() * options.length)];
 }
 
 // Single-note version: flips a coin between tied candidates, same pattern
 // as the existing clef-ambiguity-zone randomization (see chooseClef).
 function spellInKey(pitchClass, keyName) {
-  const { resolved, candidates } = spellCandidatesInKey(pitchClass, keyName);
-  if (resolved) return { ...resolved, hadChoice: false };
-  const choice = candidates[Math.floor(Math.random() * candidates.length)];
-  return { ...choice, hadChoice: candidates.length > 1 };
+  const options = spellCandidatesInKey(pitchClass, keyName);
+  return { ...pickFrom(options), hadChoice: !isUniquelyPreferred(options) };
 }
 
 function spellNoteForKey(midi, keyName) {
@@ -234,36 +245,41 @@ function spellNoteForKey(midi, keyName) {
   return { letter, accidental, octave, offset, hadChoice };
 }
 
-// Spells a 1- or 2-note target against one key. For a chord, if the
-// second note's spelling has a genuine coin-flip choice (see
-// spellCandidatesInKey) and one option would land it on the same
-// letter+octave as the first note (ambiguous — an accidental is
-// understood to apply to every note of that letter+octave for the rest of
-// the measure), picks the other option instead — same goal as the
-// existing SHARP_TO_FLAT_RESPELLING rule, generalized for an arbitrary
-// key instead of one hardcoded always-sharp case.
+// Spells a 1- or 2-note target against one key, avoiding a same-letter
+// collision in a chord (an accidental is understood to apply to every
+// note of that letter+octave for the rest of the measure) — generalizes
+// the old SHARP_TO_FLAT_RESPELLING rule for an arbitrary key instead of
+// one hardcoded always-sharp case.
+//
+// Whichever note has fewer viable spellings is assigned first, since it
+// has the least (or no) room to adapt; the other note — with more
+// options — is the one asked to avoid a collision with it, not the other
+// way around. This matters specifically when one note is a non-negotiable
+// diatonic match and the other's *preferred* spelling (e.g. a natural-
+// cancel) happens to land on that same letter: the diatonic note can't
+// change, so the flexible note has to fall back to its (possibly uglier,
+// e.g. double-flat) alternative instead, exactly as real notation would.
 function spellChordInKey(midis, keyName) {
-  const pick = (index, avoidLetter, avoidOctave) => {
-    const midi = midis[index];
-    const pitchClass = ((midi % 12) + 12) % 12;
-    const { resolved, candidates } = spellCandidatesInKey(pitchClass, keyName);
-    const options = (resolved ? [resolved] : candidates).map((o) => ({
-      ...o,
-      octave: Math.floor((midi - o.offset) / 12) - 1,
-    }));
-    if (options.length === 1) return options[0];
-    const nonColliding = options.filter((o) => !(o.letter === avoidLetter && o.octave === avoidOctave));
-    const pool = nonColliding.length > 0 ? nonColliding : options; // both collide: accept it, same as the old system's narrow exception
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
+  const withOctaves = (index) => spellCandidatesInKey(((midis[index] % 12) + 12) % 12, keyName).map((o) => ({
+    ...o,
+    octave: Math.floor((midis[index] - o.offset) / 12) - 1,
+  }));
 
-  const first = pick(0, null, null);
-  const results = [{ letter: first.letter, accidental: first.accidental, octave: first.octave, offset: first.offset }];
-  if (midis.length > 1) {
-    const second = pick(1, first.letter, first.octave);
-    results.push({ letter: second.letter, accidental: second.accidental, octave: second.octave, offset: second.offset });
-  }
-  return results;
+  const toResult = (o) => ({ letter: o.letter, accidental: o.accidental, octave: o.octave, offset: o.offset });
+
+  const optionsA = withOctaves(0);
+  if (midis.length === 1) return [toResult(pickFrom(optionsA))];
+
+  const optionsB = withOctaves(1);
+  const firstIsA = optionsA.length <= optionsB.length;
+  const [firstOptions, secondOptions] = firstIsA ? [optionsA, optionsB] : [optionsB, optionsA];
+
+  const first = pickFrom(firstOptions);
+  const nonColliding = secondOptions.filter((o) => !(o.letter === first.letter && o.octave === first.octave));
+  const pool = nonColliding.length > 0 ? nonColliding : secondOptions; // both collide: accept it, same as the old system's narrow exception
+  const second = pickFrom(pool);
+
+  return firstIsA ? [toResult(first), toResult(second)] : [toResult(second), toResult(first)];
 }
 
 // Notes in this zone can be notated in either clef — see SPEC.md v2.

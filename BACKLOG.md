@@ -4,7 +4,7 @@ Ideas for future features, not yet committed to or scheduled. Nothing here is de
 
 Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
 
-**Next number:** 10
+**Next number:** 11
 
 ## 2: Mixing interval/chromatic modes with plain single notes
 
@@ -28,3 +28,7 @@ Makes it easier to not click the wrong one on iPad, probably make the entire red
 When commiting, check that the "next number" in top of this backlog is one bigger that the backlog item with the highest number.
 
 Use for example husky to create a pre commit hook. 
+
+
+## 10: Show version in app
+When shipping a version, for example v11, then also display that version some where on the app page, it could be part of the technical requirements text in the bottom.

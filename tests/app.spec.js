@@ -880,6 +880,22 @@ test.describe('"Randomize key" mode (SPEC.md v11 / BACKLOG.md #6)', () => {
     expect(seconds.every((letter) => letter === 'g')).toBe(true); // always forced to Gb, never F#
   });
 
+  // Regression test: found in real use on an iPad. In Cb major (which
+  // flats every letter, including C), Cb3 is diatonic, but the *preferred*
+  // spelling of C-natural is also letter "c" (a natural cancelling the
+  // key's flat) — the same letter as the diatonic note, an unavoidable
+  // collision using each note's top choice in isolation. The diatonic Cb
+  // can't be respelled (that would itself be nonstandard), so C-natural
+  // has to fall back to its uglier alternative (D double-flat, same
+  // pitch) instead, even though a natural sign would otherwise be
+  // preferred whenever there's no collision to avoid.
+  test('a natural-cancel note falls back to its double-accidental alternative when its preferred letter is already taken by a diatonic note', async ({ page }) => {
+    await page.goto('/index.html');
+    const results = await page.evaluate(() => window.__primavista.spellChordInKey([47, 48], 'Cb')); // Cb3 + C3
+    expect(results[0]).toMatchObject({ letter: 'c', accidental: null, octave: 3 }); // Cb3, diatonic, untouched
+    expect(results[1]).toMatchObject({ letter: 'd', accidental: 'bb', octave: 3 }); // C3 respelled as Dbb3
+  });
+
   test('"Randomize key" checkbox toggles practiceOptions.randomizeKey', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('#randomize-key-toggle')).not.toBeChecked();
