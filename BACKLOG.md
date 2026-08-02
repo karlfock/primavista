@@ -4,15 +4,7 @@ Ideas for future features, not yet committed to or scheduled. Nothing here is de
 
 Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
 
-**Next number:** 5
-
-## 1: Interval practice: melodic mode
-
-Alongside interval mode's current chord (harmonic, both notes together) presentation, add a melodic mode — the two notes played one after another rather than simultaneously, with the order (ascending/descending) randomized per note. Randomly choosing between chord and melodic presentation per note was also discussed, so both get practiced.
-
-**Why deferred out of v5:** melodic notation needs two separate notes in sequence within one measure, which means picking a duration for each (e.g. two half notes instead of one whole note) — a small, real crack in `SPEC.md`'s "no rhythm" non-goal, even with a fixed non-varying duration. Detection also needs a different rule than chord mode: a specific two-note *sequence* (order matters, first wrong note-on should fail immediately rather than waiting for a note that'll never come) instead of an unordered pending set. Both are real enough to be their own follow-up rather than bundled into the first interval-mode slice.
-
-**Decided (2026-07-31):** looked at how Piano Marvel's "Practice Mode" handles this for inspiration — it's tempo-free (matches what we want) but uses a wait-indefinitely-for-the-correct-note model with multiple attempts, not single-attempt. Explicitly rejected: "I can just sit and try all the notes, that is not a good way of learning." Melodic mode should stay single-attempt, consistent with the rest of the app (chord mode, single-note mode) — first wrong note-on in the sequence fails immediately, same as already planned above. Piano Marvel's model is fine for "hear what a piece sounds like" playback, not for a retrieval-practice drill like this one.
+**Next number:** 9
 
 ## 2: Mixing interval/chromatic modes with plain single notes
 
@@ -21,3 +13,17 @@ Currently "Chromatic notes" and "Interval mode" each apply to the *whole* sessio
 ## 4: Interval mode: allow intervals bigger than an octave
 
 Interval mode currently caps at 12 semitones (`MAX_INTERVAL_SEMITONES` in `app.js`), i.e. an octave. Raise the cap to include intervals up to a major 10th (16 semitones = octave + major 3rd) — roughly the widest reach playable with one hand, and still useful/realistic to practice reading and judging on the staff, unlike arbitrarily large spans.
+
+## 5: Two hands?
+Should then maybe be a rule that left hand is below middle c and right hand above?
+TODO: refine
+
+## 6: Keys? Not only C-major
+Show the name of the key
+TODO: refine
+
+## 7: Show the notes and the name of the interval, even after correct playing
+TODO: refine
+
+## 8: Make the pause and close buttons a little bigger
+Makes it easier to not click the wrong one on iPad, probably make the entire red button a bit gigger. 
