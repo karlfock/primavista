@@ -37,6 +37,10 @@ const page = await browser.newPage();
 await page.goto(`${BASE_URL}/`, { waitUntil: 'load' });
 await page.waitForTimeout(300);
 
+// The app loads idle (see SPEC.md v5) — nothing is shown until a session
+// is explicitly started.
+await page.click('#start-session-btn');
+await page.waitForTimeout(200);
 await page.screenshot({ path: path.join(OUT_DIR, '01-note.png') });
 
 const wrongMidi = await page.evaluate(() => {
@@ -63,6 +67,25 @@ for (let i = 0; i < 60; i++) {
 }
 await page.waitForTimeout(200);
 await page.screenshot({ path: path.join(OUT_DIR, '03-summary.png') });
+
+await page.click('#play-again-btn');
+await page.locator('#randomize-key-toggle').check();
+await page.locator('#start-session-btn').click();
+await page.waitForTimeout(300);
+await page.screenshot({ path: path.join(OUT_DIR, '04-randomize-key.png') });
+
+// The key-display label (top-left) and the corrective-feedback box
+// (top-center) are both absolutely positioned within .staff-panel — this
+// is the one screen where both are visible at once, worth eyeballing for
+// overlap since the Playwright suite checks DOM state, not actual layout.
+const wrongMidiWithKey = await page.evaluate(() => {
+  const api = window.__primavista;
+  const correct = api.session.current.midi;
+  return api.NOTE_RANGE.find((m) => m !== correct);
+});
+await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidiWithKey);
+await page.waitForTimeout(200);
+await page.screenshot({ path: path.join(OUT_DIR, '05-randomize-key-miss.png') });
 
 await browser.close();
 server.close();

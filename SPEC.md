@@ -13,7 +13,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v7 (shipped):** "Drill my weak spots" session mode built directly on the trouble-score data.
 - **v8 (shipped):** interval type named in corrective feedback; corrective feedback window doubled; a hint for entering interval-mode chords on the virtual piano.
 - **v9 (shipped):** corrective feedback window extended to 10s but made closable early; the interval-mode piano hint is also closable.
-- **v10 (this update):** corrective feedback also gets a pause button, for reading it at your own pace instead of racing a countdown.
+- **v10 (shipped):** corrective feedback also gets a pause button, for reading it at your own pace instead of racing a countdown.
+- **v11 (this update):** "Randomize key" mode — each attempt can be spelled and rendered against one of the 15 standard key signatures instead of always assuming C major/A minor.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -31,8 +32,8 @@ Previously the app kept waiting after a wrong answer until the correct note was 
 - Missed notes are re-queued later in the session until answered correctly (re-queued appearances don't count toward the 25).
 - At the end, a **session summary** is shown (e.g. "22/25 correct on first try", average response time), giving a natural sense of completion and something to beat next time.
 ## Explicit non-goals (still deferred, unchanged from v1 unless noted)
-- ~~No accidentals (sharps/flats) — natural notes only (A–G).~~ **Superseded in v5** — see Chromatic notes & interval mode below. Still no key signature (stays "in C").
-- No key signatures — everything reads as if in C major / A minor.
+- ~~No accidentals (sharps/flats) — natural notes only (A–G).~~ **Superseded in v5** — see Chromatic notes & interval mode below.
+- ~~No key signatures — everything reads as if in C major / A minor.~~ **Superseded in v11** — see "Randomize key" mode below. This is opt-in (a checkbox, off by default); with it off, the app still reads exactly as if in C major/A minor, unchanged.
 - No rhythm/timing beyond simple response-time logging.
 - ~~No chords — single notes only.~~ **Superseded in v5** for interval mode specifically — see below. Plain single-note mode is unaffected and remains the default.
 - No 8va/15ma notation.
@@ -86,7 +87,7 @@ Ledger-line rendering (via VexFlow) then keys off `(midiNote, clef)` as a pair r
 - ~~Weighted randomization (favor problem notes/ledger-line-heavy notes based on past misses) — requires persistence.~~ **Shipped in v6** (weighting) and taken further in v7 (isolation drilling — see "Drill my weak spots" above).
 - 8va/15ma rendering logic if range is ever extended beyond A0–C7.
 - ~~On-screen piano widget as a fallback for users without a MIDI device.~~ **Shipped in v4.**
-- Randomized key signatures, once accidentals are supported.
+- ~~Randomized key signatures, once accidentals are supported.~~ **Shipped in v11** — see "Randomize key" mode below.
 ## Definition of done for v3
 - Sessions are 25 notes long and end with a summary (first-try score, average response time).
 - Exactly one attempt per note; a wrong answer shows the correct note name/key and advances.
@@ -240,3 +241,24 @@ The corrective-feedback box gets a second button, a pause (`⏸`) icon, next to 
 - The pause button hides itself once clicked, and reappears for the next miss's feedback.
 - The close button still hides the box and advances the session after a miss has been paused.
 - All v1–v9 definition-of-done items continue to hold.
+
+## "Randomize key" mode (v11 change)
+
+A new checkbox, **"Randomize key"**, off by default. Unchecked, the app behaves exactly as before — implicitly C major/A minor, no key signature drawn, "Chromatic notes"/"Interval mode" govern out-of-key tones exactly as they already did. Checked, every new attempt (not once per session, unlike the other toggles — see rationale below) picks one of **15 standard key signatures** and spells/renders the target relative to it, with a label near the staff showing both names for that signature (e.g. "Eb major / C minor").
+
+- **Scope: 15 keys, not 30.** A major key and its relative minor share the exact same key signature — the distinction between them is harmonic/functional (which chord a piece resolves to), and this app has no concept of chord progressions or cadences, so there's only one list of 15 (`KEY_NAMES` in `app.js`): C, G, D, A, E, B, F#, Gb, C#, Db, Ab, Eb, Bb, F, Cb — every major key signature that doesn't require a double sharp/flat. `RELATIVE_MINOR_NAME` supplies the second name shown in the UI label.
+- **Per-attempt, not per-session.** Unlike "Chromatic notes"/"Interval mode" (captured once at `startSession()`), a new key is picked for every attempt, "like one measure in a real song" — a two-note interval-mode target shares one key across both notes. A re-queued miss keeps its original key rather than getting a fresh one (`requeue` now threads `key` through, same as `midis`).
+- **Spelling algorithm** (`spellCandidatesInKey`/`spellInKey`/`spellNoteForKey`/`spellChordInKey` in `app.js`): for a pitch already diatonic to the key, no accidental glyph is drawn at all (the key signature at the clef already covers it) — even though the pitch itself may be altered. For a chromatic (out-of-key) pitch, an explicit accidental is always drawn: if canceling an existing key-signature alteration on some letter reaches the target exactly (a natural sign), that's used — it's the standard, expected notation choice, and at most one letter can ever qualify (two different letters never share a natural pitch), so there's no real ambiguity. Only when neither applies — a genuinely foreign pitch with no natural-sign shortcut — is there an actual tie between sharpening the lower diatonic neighbor letter or flattening the upper one; that tie is broken with a coin flip, the same pattern as the existing clef-ambiguity-zone randomization (`chooseClef`).
+- **Chord collision avoidance generalizes the existing rule.** The v5 rule (a minor-second chord landing on a natural + its own sharp gets respelled so they don't share a letter) was a single hardcoded case for the always-sharp, key-less system. `spellChordInKey` generalizes it: when a coin-flip choice for the second note in a chord would otherwise land it on the same letter+octave as the first note, it picks the other candidate instead. Same goal, works for an arbitrary key instead of one fixed case.
+- **A natural-sign accidental doesn't appear in the VexFlow key string or the text display name.** Unlike `#`/`b`, a bare letter+octave (e.g. "e/4", "E4") is already unambiguously natural — only the separate accidental *modifier* actually draws the visible natural-sign glyph on the staff.
+- **Spelling is computed once per attempt, not recomputed on demand.** Since it can involve a genuine coin flip, `showNextNote` computes it once (`spellChordInKey`) and stores it on `session.current.spellings`; both `renderStaff` and `showCorrectiveFeedback` reuse that stored result rather than recomputing, so a miss's corrective-feedback text always names the exact spelling that was actually rendered on the staff.
+- **Bug fix alongside this:** starting a session while corrective feedback for a previous miss is still showing already had a fix for a dangling auto-advance timer (see v9); the same fix now also has to survive the new `key`/`spellings` fields flowing through `session.current` without reintroducing a stale-state bug — covered by the existing dangling-timer regression test continuing to pass alongside the new key-aware tests.
+
+## Definition of done for v11
+- With "Randomize key" off, behavior is unchanged from v10: no key label shown, no key signature drawn, spelling identical to the always-sharp key-less path.
+- With it on, each attempt shows a key signature and a "X major / Y minor" label, and the target note(s) are spelled correctly relative to that key (diatonic notes unmarked, an explicit natural/sharp/flat drawn only when the pitch actually deviates from what the key signature implies).
+- A pitch that's a natural-sign cancellation of an existing key alteration is spelled that way consistently (not left to chance); a pitch with no natural-sign option available is spelled either way roughly evenly across repeated trials.
+- An interval-mode chord never renders two noteheads on the same letter+octave distinguished only by an accidental, for any of the 15 keys.
+- A re-queued miss keeps the same key it was first shown with.
+- Corrective feedback on a miss names the exact spelling that was rendered on the staff, never a freshly re-rolled one.
+- All v1–v10 definition-of-done items continue to hold.

@@ -213,6 +213,16 @@ main {
   display: none !important;
 }
 
+.key-display {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  color: #6b6b63;
+  font-size: 0.85rem;
+  font-weight: 600;
+  z-index: 1;
+}
+
 .corrective-feedback {
   position: absolute;
   top: 1rem;

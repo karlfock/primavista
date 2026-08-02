@@ -774,6 +774,188 @@ test.describe('interval-mode virtual piano hint (SPEC.md v8)', () => {
   });
 });
 
+test.describe('"Randomize key" mode (SPEC.md v11 / BACKLOG.md #6)', () => {
+  test('exposes exactly the 15 standard key signatures, each with a relative minor name', async ({ page }) => {
+    await page.goto('/index.html');
+    const { keyNames, minors } = await page.evaluate(() => {
+      const api = window.__primavista;
+      return { keyNames: api.KEY_NAMES, minors: api.RELATIVE_MINOR_NAME };
+    });
+    expect(keyNames.sort()).toEqual(
+      ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#', 'F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'].sort(),
+    );
+    expect(keyNames.length).toBe(15);
+    for (const key of keyNames) {
+      expect(typeof minors[key]).toBe('string');
+    }
+  });
+
+  test('keyDisplayName shows both the major and relative minor name', async ({ page }) => {
+    await page.goto('/index.html');
+    const names = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        eb: api.keyDisplayName('Eb'),
+        c: api.keyDisplayName('C'),
+        fSharp: api.keyDisplayName('F#'),
+      };
+    });
+    expect(names.eb).toBe('Eb major / C minor');
+    expect(names.c).toBe('C major / A minor');
+    expect(names.fSharp).toBe('F# major / D# minor');
+  });
+
+  test('a note diatonic to the key gets no accidental glyph, even though the key alters it', async ({ page }) => {
+    await page.goto('/index.html');
+    const result = await page.evaluate(() => window.__primavista.spellNoteForKey(66, 'D')); // F#4, diatonic in D major
+    expect(result).toMatchObject({ letter: 'f', accidental: null, octave: 4 });
+  });
+
+  test('a chromatic note that lands exactly on a key-altered letter is spelled with a natural sign', async ({ page }) => {
+    await page.goto('/index.html');
+    // Eb major flats B, E, A — E-natural has to cancel that with a natural sign.
+    const result = await page.evaluate(() => window.__primavista.spellNoteForKey(64, 'Eb')); // E4 natural
+    expect(result).toMatchObject({ letter: 'e', accidental: 'n', octave: 4 });
+  });
+
+  test('a natural-sign accidental is omitted from the VexFlow key string and the display name', async ({ page }) => {
+    await page.goto('/index.html');
+    const { vexKey, displayName } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const spelling = api.spellNoteForKey(64, 'Eb'); // E4 natural, cancels Eb major's flat
+      return { vexKey: api.formatVexKey(spelling), displayName: api.formatDisplayName(spelling) };
+    });
+    expect(vexKey).toBe('e/4'); // not "en/4" — bare letter/octave is already unambiguous
+    expect(displayName).toBe('E4'); // not "En4"
+  });
+
+  test('a genuinely out-of-key note (no natural-cancel available) flips between the two valid enharmonic spellings', async ({ page }) => {
+    await page.goto('/index.html');
+    const { lettersSeen, hadChoice } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const letters = new Set();
+      let choice = false;
+      for (let i = 0; i < 200; i++) {
+        const result = api.spellNoteForKey(61, 'C'); // C#4/Db4 in C major — neither is a natural-cancel
+        letters.add(result.letter);
+        if (result.hadChoice) choice = true;
+      }
+      return { lettersSeen: [...letters].sort(), hadChoice: choice };
+    });
+    expect(lettersSeen).toEqual(['c', 'd']); // sharp-of-C or flat-of-D, both seen across 200 trials
+    expect(hadChoice).toBe(true);
+  });
+
+  test('spellChordInKey avoids a same-letter collision even when the coin flip would otherwise create one', async ({ page }) => {
+    await page.goto('/index.html');
+    const seconds = await page.evaluate(() => {
+      const api = window.__primavista;
+      const letters = [];
+      for (let i = 0; i < 100; i++) {
+        // F4 (diatonic in C major) + F#4 (would coin-flip between F#/Gb) —
+        // the F# option would collide with the F natural already in the chord.
+        const [, second] = api.spellChordInKey([65, 66], 'C');
+        letters.push(second.letter);
+      }
+      return letters;
+    });
+    expect(seconds.every((letter) => letter === 'g')).toBe(true); // always forced to Gb, never F#
+  });
+
+  test('"Randomize key" checkbox toggles practiceOptions.randomizeKey', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#randomize-key-toggle')).not.toBeChecked();
+    const before = await page.evaluate(() => window.__primavista.practiceOptions.randomizeKey);
+    expect(before).toBe(false);
+
+    await page.locator('#randomize-key-toggle').check();
+    const after = await page.evaluate(() => window.__primavista.practiceOptions.randomizeKey);
+    expect(after).toBe(true);
+  });
+
+  test('buildQueue assigns a key to every item when randomizeKeyMode is on, and none when off', async ({ page }) => {
+    await page.goto('/index.html');
+    const { withKey, withoutKey } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const on = api.buildQueue(10, { randomizeKeyMode: true });
+      const off = api.buildQueue(10, { randomizeKeyMode: false });
+      return {
+        withKey: on.every((item) => api.KEY_NAMES.includes(item.key)),
+        withoutKey: off.every((item) => item.key === null),
+      };
+    });
+    expect(withKey).toBe(true);
+    expect(withoutKey).toBe(true);
+  });
+
+  test('checking "Randomize key" and starting a session shows the key label near the staff', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#randomize-key-toggle').check();
+    await startNewSession(page);
+
+    const keyDisplay = page.locator('#key-display');
+    await expect(keyDisplay).not.toHaveClass(/hidden/);
+    const text = await keyDisplay.textContent();
+    expect(text).toMatch(/^[A-G][#b]? major \/ [A-G][#b]? minor$/);
+  });
+
+  test('the key label stays hidden when "Randomize key" is off', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    await expect(page.locator('#key-display')).toHaveClass(/hidden/);
+  });
+
+  test('a missed note keeps its original key when re-queued, and corrective feedback names the spelling that was actually rendered', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      // Force a known case: Eb major, target E natural — spells as "E4"
+      // with a natural-cancel accidental, not "Fb4".
+      api.session.current = {
+        midi: 64, midis: [64], clef: 'treble', isFirstPresentation: true,
+        key: 'Eb', spellings: [{ letter: 'e', accidental: 'n', octave: 4 }],
+      };
+      api.session.queue = [];
+    });
+
+    await page.evaluate(() => window.__primavista.onNoteOn(21)); // wrong note
+
+    await expect(page.locator('#corrective-feedback-text')).toHaveText('That was E4');
+    const requeued = await page.evaluate(() => window.__primavista.session.queue[0]);
+    expect(requeued.key).toBe('Eb'); // re-queued with the same key, not a fresh random one
+  });
+
+  test('renders without console or page errors with "Randomize key" on, across several attempts', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') errors.push(msg.text());
+    });
+
+    await page.goto('/index.html');
+    await page.locator('#randomize-key-toggle').check();
+    await startNewSession(page);
+
+    for (let i = 0; i < 20; i++) {
+      const current = await page.evaluate(() => window.__primavista.session.current.midi);
+      await page.evaluate((m) => window.__primavista.onNoteOn(m), current);
+    }
+    await expect(page.locator('#staff svg')).toHaveCount(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('with "Randomize key" off, behavior is unchanged: no key label, key-less spelling', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const { hasKey, spellings } = await page.evaluate(() => {
+      const api = window.__primavista;
+      return { hasKey: api.session.current.key, spellings: api.session.current.spellings };
+    });
+    expect(hasKey).toBeNull();
+    expect(spellings).toBeNull();
+  });
+});
+
 test.describe('weighted note selection based on historical misses (SPEC.md v6)', () => {
   test('trouble keys: notes are keyed by midi, intervals by sorted pair regardless of input order', async ({ page }) => {
     await page.goto('/index.html');

@@ -24,6 +24,7 @@
   <section class="practice-options">
     <label><input type="checkbox" id="chromatic-toggle"> Chromatic notes</label>
     <label><input type="checkbox" id="interval-toggle"> Interval mode</label>
+    <label><input type="checkbox" id="randomize-key-toggle"> Randomize key</label>
     <div class="option-buttons">
       <button id="drill-weak-spots-btn" type="button" disabled>Drill my weak spots</button>
       <button id="start-session-btn" type="button">Start new session</button>
@@ -46,6 +47,7 @@
       <button id="corrective-feedback-pause" class="dismiss-btn" type="button" aria-label="Pause auto-advance">&#9208;</button>
       <button id="corrective-feedback-close" class="dismiss-btn" type="button" aria-label="Dismiss">&times;</button>
     </div>
+    <div id="key-display" class="key-display hidden"></div>
     <div id="staff"></div>
   </section>
 

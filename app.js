@@ -61,14 +61,196 @@ function spellNote(midi, chordMidis = [midi]) {
   return { letter, accidental, octave };
 }
 
+// A natural-sign accidental ('n', see "Key signatures" below) still needs
+// a visible modifier drawn on the staff to cancel a key signature — but
+// unlike '#'/'b', a bare letter+octave is already unambiguously natural,
+// so it's omitted from the VexFlow key string and the text display name;
+// only the modifier (added separately in renderStaff) actually shows it.
+function accidentalSuffix(accidental) {
+  return accidental && accidental !== 'n' ? accidental : '';
+}
+
+// Shared by both the key-less path below and the key-aware path (see
+// "Key signatures" section) so the string formatting itself lives in one
+// place regardless of which spelling produced the {letter, accidental,
+// octave}.
+function formatVexKey({ letter, accidental, octave }) {
+  return `${letter}${accidentalSuffix(accidental)}/${octave}`;
+}
+
+function formatDisplayName({ letter, accidental, octave }) {
+  return `${letter.toUpperCase()}${accidentalSuffix(accidental)}${octave}`;
+}
+
 function midiToVexKey(midi, chordMidis) {
-  const { letter, accidental, octave } = spellNote(midi, chordMidis);
-  return `${letter}${accidental || ''}/${octave}`;
+  return formatVexKey(spellNote(midi, chordMidis));
 }
 
 function midiToDisplayName(midi, chordMidis) {
-  const { letter, accidental, octave } = spellNote(midi, chordMidis);
-  return `${letter.toUpperCase()}${accidental || ''}${octave}`;
+  return formatDisplayName(spellNote(midi, chordMidis));
+}
+
+// --- Key signatures ("Randomize key" mode, see BACKLOG.md #6) -----------
+// Real music is essentially never "in C" — this lets each attempt pick one
+// of the 15 standard key signatures (every major key that doesn't need a
+// double sharp/flat) and spell/render relative to it, instead of always
+// assuming C major/A minor. A major key and its relative minor share the
+// exact same signature — the distinction between them is harmonic/
+// functional (which chord a piece resolves to), which this app has no
+// concept of (no chords being progressed, no cadences) — so there's only
+// one list of 15 keys, not 15 major + 15 minor.
+const SHARP_ORDER = ['f', 'c', 'g', 'd', 'a', 'e', 'b'];
+const FLAT_ORDER = ['b', 'e', 'a', 'd', 'g', 'c', 'f'];
+
+const KEY_SIGNATURE_INFO = {
+  C: { type: 'none', count: 0 },
+  G: { type: 'sharp', count: 1 }, D: { type: 'sharp', count: 2 }, A: { type: 'sharp', count: 3 },
+  E: { type: 'sharp', count: 4 }, B: { type: 'sharp', count: 5 }, 'F#': { type: 'sharp', count: 6 },
+  'C#': { type: 'sharp', count: 7 },
+  F: { type: 'flat', count: 1 }, Bb: { type: 'flat', count: 2 }, Eb: { type: 'flat', count: 3 },
+  Ab: { type: 'flat', count: 4 }, Db: { type: 'flat', count: 5 }, Gb: { type: 'flat', count: 6 },
+  Cb: { type: 'flat', count: 7 },
+};
+const KEY_NAMES = Object.keys(KEY_SIGNATURE_INFO);
+
+// Purely a display label (both names for the one shared signature) — not
+// a second set of signatures to pick from.
+const RELATIVE_MINOR_NAME = {
+  C: 'A', G: 'E', D: 'B', A: 'F#', E: 'C#', B: 'G#', 'F#': 'D#', 'C#': 'A#',
+  F: 'D', Bb: 'G', Eb: 'C', Ab: 'F', Db: 'Bb', Gb: 'Eb', Cb: 'Ab',
+};
+
+function keyDisplayName(keyName) {
+  return `${keyName} major / ${RELATIVE_MINOR_NAME[keyName]} minor`;
+}
+
+function pickRandomKey() {
+  return KEY_NAMES[Math.floor(Math.random() * KEY_NAMES.length)];
+}
+
+// Inverse of NATURAL_PITCH_CLASSES above — each letter's own unaltered
+// pitch class, needed to work out what accidental (if any) reaches a
+// target pitch from that letter, independent of what the key signature
+// already implies for it.
+const LETTER_NATURAL_PITCH_CLASS = Object.fromEntries(
+  Object.entries(NATURAL_PITCH_CLASSES).map(([pitchClass, letter]) => [letter, Number(pitchClass)]),
+);
+const LETTERS = ['c', 'd', 'e', 'f', 'g', 'a', 'b'];
+
+// Per-letter accidental (+1 sharp, -1 flat, 0 none) implied by a key's
+// signature — derived the same way real notation adds sharps/flats one at
+// a time in the fixed order above, rather than a hand-transcribed table
+// (15 keys x 7 letters is a lot to get right by hand).
+function buildKeyAccidentals(keyName) {
+  const info = KEY_SIGNATURE_INFO[keyName];
+  const accidentals = { c: 0, d: 0, e: 0, f: 0, g: 0, a: 0, b: 0 };
+  if (info.type === 'none') return accidentals;
+  const order = info.type === 'sharp' ? SHARP_ORDER : FLAT_ORDER;
+  const delta = info.type === 'sharp' ? 1 : -1;
+  for (let i = 0; i < info.count; i++) accidentals[order[i]] = delta;
+  return accidentals;
+}
+const KEY_ACCIDENTALS = Object.fromEntries(KEY_NAMES.map((k) => [k, buildKeyAccidentals(k)]));
+
+function keyImpliedPitchClass(letter, keyName) {
+  return (LETTER_NATURAL_PITCH_CLASS[letter] + KEY_ACCIDENTALS[keyName][letter] + 12) % 12;
+}
+
+const ACCIDENTAL_SYMBOL_BY_OFFSET = { '-2': 'bb', '-1': 'b', 0: 'n', 1: '#', 2: '##' };
+
+// For a chromatic (out-of-key) pitch, returns either a single resolved
+// spelling (an exact diatonic match, or a natural that cancels an
+// existing key alteration — both unambiguous) or, when genuinely neither
+// applies, the two competing single-accidental candidates (sharp of the
+// lower diatonic neighbor letter, flat of the upper one) for the caller to
+// choose between. Separated from the actual choosing (see spellInKey/
+// spellChordInKey below) so a chord can avoid a same-letter collision by
+// picking deliberately instead of coincidentally.
+function spellCandidatesInKey(pitchClass, keyName) {
+  for (const letter of LETTERS) {
+    if (keyImpliedPitchClass(letter, keyName) === pitchClass) {
+      // Diatonic to this key — the key signature at the clef already
+      // covers the alteration (if any), so no accidental glyph is drawn
+      // on the note itself, even though the pitch itself may be altered.
+      return { resolved: { letter, accidental: null, offset: KEY_ACCIDENTALS[keyName][letter] } };
+    }
+  }
+
+  const candidates = [];
+  for (const letter of LETTERS) {
+    const implied = keyImpliedPitchClass(letter, keyName);
+    const isLowerNeighbor = implied === (pitchClass - 1 + 12) % 12;
+    const isUpperNeighbor = implied === (pitchClass + 1) % 12;
+    if (!isLowerNeighbor && !isUpperNeighbor) continue;
+    // Offset relative to the letter's own natural pitch (not the key's
+    // implied pitch) — an explicit accidental always means an absolute
+    // offset from natural, regardless of what the key signature assumes.
+    let offset = pitchClass - LETTER_NATURAL_PITCH_CLASS[letter];
+    if (offset > 6) offset -= 12;
+    if (offset < -6) offset += 12;
+    candidates.push({ letter, accidental: ACCIDENTAL_SYMBOL_BY_OFFSET[offset], offset });
+  }
+
+  // A natural that cancels an existing key-signature alteration is the
+  // standard, expected notation choice whenever it's available (and at
+  // most one candidate can ever qualify, since two different letters
+  // never share a natural pitch) — no real ambiguity in that case.
+  const naturalCancel = candidates.find((c) => c.offset === 0);
+  if (naturalCancel) return { resolved: naturalCancel };
+
+  return { candidates };
+}
+
+// Single-note version: flips a coin between tied candidates, same pattern
+// as the existing clef-ambiguity-zone randomization (see chooseClef).
+function spellInKey(pitchClass, keyName) {
+  const { resolved, candidates } = spellCandidatesInKey(pitchClass, keyName);
+  if (resolved) return { ...resolved, hadChoice: false };
+  const choice = candidates[Math.floor(Math.random() * candidates.length)];
+  return { ...choice, hadChoice: candidates.length > 1 };
+}
+
+function spellNoteForKey(midi, keyName) {
+  const pitchClass = ((midi % 12) + 12) % 12;
+  const { letter, accidental, offset, hadChoice } = spellInKey(pitchClass, keyName);
+  // The accidental's offset is always relative to the letter's own
+  // natural pitch (see spellCandidatesInKey), so the octave has to be
+  // computed the same way — e.g. MIDI 60 spelled as B# lands in octave 3,
+  // not 4, because it's B3 (natural pitch) raised a semitone, not C4.
+  const octave = Math.floor((midi - offset) / 12) - 1;
+  return { letter, accidental, octave, hadChoice };
+}
+
+// Spells a 1- or 2-note target against one key. For a chord, if the
+// second note's spelling has a genuine coin-flip choice (see
+// spellCandidatesInKey) and one option would land it on the same
+// letter+octave as the first note (ambiguous — an accidental is
+// understood to apply to every note of that letter+octave for the rest of
+// the measure), picks the other option instead — same goal as the
+// existing SHARP_TO_FLAT_RESPELLING rule, generalized for an arbitrary
+// key instead of one hardcoded always-sharp case.
+function spellChordInKey(midis, keyName) {
+  const pick = (index, avoidLetter, avoidOctave) => {
+    const midi = midis[index];
+    const pitchClass = ((midi % 12) + 12) % 12;
+    const { resolved, candidates } = spellCandidatesInKey(pitchClass, keyName);
+    const options = (resolved ? [resolved] : candidates).map((o) => ({
+      ...o,
+      octave: Math.floor((midi - o.offset) / 12) - 1,
+    }));
+    if (options.length === 1) return options[0];
+    const nonColliding = options.filter((o) => !(o.letter === avoidLetter && o.octave === avoidOctave));
+    const pool = nonColliding.length > 0 ? nonColliding : options; // both collide: accept it, same as the old system's narrow exception
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
+
+  const first = pick(0, null, null);
+  const results = [{ letter: first.letter, accidental: first.accidental, octave: first.octave }];
+  if (midis.length > 1) {
+    const second = pick(1, first.letter, first.octave);
+    results.push({ letter: second.letter, accidental: second.accidental, octave: second.octave });
+  }
+  return results;
 }
 
 // Notes in this zone can be notated in either clef — see SPEC.md v2.
@@ -250,7 +432,12 @@ const INCORRECT_FEEDBACK_MS = 10000;
 // that only ever cared about one note don't need to change) and `midis`
 // (the full target, length 1 for a single note or 2 for an interval
 // chord — the only field the matching/rendering logic actually needs).
-function buildQueue(count, { intervalMode = false, chromaticMode = false } = {}) {
+// `key` is a randomly picked key signature name (see "Key signatures"
+// above) when "Randomize key" is on, or null when it's off — picked once
+// per attempt here (not per session, unlike chromatic/interval), so a
+// requeued miss (see requeue below) has to carry its own key forward
+// rather than getting a fresh one.
+function buildQueue(count, { intervalMode = false, chromaticMode = false, randomizeKeyMode = false } = {}) {
   const scores = loadTroubleScores(); // read once per session, not once per note
   const queue = [];
   let previous = null;
@@ -258,16 +445,19 @@ function buildQueue(count, { intervalMode = false, chromaticMode = false } = {})
     const midis = intervalMode
       ? pickIntervalPair(scores)
       : [chromaticMode ? pickRandomChromaticNote(previous, scores) : pickRandomNote(previous, scores)];
-    queue.push({ midi: midis[0], midis, isFirstPresentation: true });
+    const key = randomizeKeyMode ? pickRandomKey() : null;
+    queue.push({ midi: midis[0], midis, isFirstPresentation: true, key });
     previous = midis[0];
   }
   return queue;
 }
 
 // Missed notes reappear later in the session rather than immediately next,
-// so the user can't just retry from muscle memory a beat later.
-function requeue(midis, queue) {
-  const item = { midi: midis[0], midis, isFirstPresentation: false };
+// so the user can't just retry from muscle memory a beat later. Carries
+// the same key forward (see buildQueue) — it's the same attempt
+// reappearing, not a new one, so it shouldn't get a fresh random key.
+function requeue(midis, queue, key = null) {
+  const item = { midi: midis[0], midis, isFirstPresentation: false, key };
   const insertAt = queue.length === 0 ? 0 : 1 + Math.floor(Math.random() * queue.length);
   queue.splice(insertAt, 0, item);
 }
@@ -326,7 +516,14 @@ const session = {
 const STAFF_WIDTH = 380;
 const STAFF_HEIGHT = 330;
 
-function renderStaff(targetMidis, clef) {
+// `keyName` + `spellings` (see "Key signatures" above) are only passed
+// when "Randomize key" is on. `spellings` must be computed once (via
+// spellChordInKey) by the caller and passed in rather than recomputed
+// here, since it involves a genuine coin flip in some cases — recomputing
+// it on every call could silently show a different spelling than the one
+// corrective feedback later names for the same miss. When they're
+// omitted, this falls back to the original key-less path unchanged.
+function renderStaff(targetMidis, clef, { keyName = null, spellings = null } = {}) {
   const midis = Array.isArray(targetMidis) ? targetMidis : [targetMidis];
   const container = document.getElementById('staff');
   container.innerHTML = '';
@@ -338,6 +535,10 @@ function renderStaff(targetMidis, clef) {
 
   const trebleStave = new VF.Stave(10, 40, STAFF_WIDTH - 30).addClef('treble');
   const bassStave = new VF.Stave(10, 170, STAFF_WIDTH - 30).addClef('bass');
+  if (keyName) {
+    trebleStave.addKeySignature(keyName);
+    bassStave.addKeySignature(keyName);
+  }
   trebleStave.setContext(context).draw();
   bassStave.setContext(context).draw();
 
@@ -355,11 +556,11 @@ function renderStaff(targetMidis, clef) {
     .draw();
 
   const targetStave = clef === 'treble' ? trebleStave : bassStave;
-  const keys = midis.map((midi) => midiToVexKey(midi, midis));
+  const keys = spellings ? spellings.map(formatVexKey) : midis.map((midi) => midiToVexKey(midi, midis));
 
   const note = new VF.StaveNote({ clef, keys, duration: 'w' });
   midis.forEach((midi, index) => {
-    const { accidental } = spellNote(midi, midis);
+    const accidental = spellings ? spellings[index].accidental : spellNote(midi, midis).accidental;
     if (accidental) note.addModifier(new VF.Accidental(accidental), index);
   });
 
@@ -390,7 +591,14 @@ let correctiveFeedbackTimeout = null;
 function showCorrectiveFeedback(midis) {
   const el = document.getElementById('corrective-feedback');
   const textEl = document.getElementById('corrective-feedback-text');
-  const names = midis.map((midi) => midiToDisplayName(midi, midis)).join(' + ');
+  // Reuses whatever spelling was already rendered for this attempt (see
+  // showNextNote) rather than recomputing — a key-aware spelling can
+  // involve a genuine coin flip, so recomputing here could name a
+  // different spelling than the one actually shown on the staff.
+  const spellings = session.current && session.current.spellings;
+  const names = midis
+    .map((midi, index) => (spellings ? formatDisplayName(spellings[index]) : midiToDisplayName(midi, midis)))
+    .join(' + ');
   // Naming the interval type alongside the notes only applies to a
   // two-note chord target — a single note has no interval to name.
   const intervalSuffix = midis.length === 2 ? ` (${intervalNameFor(midis)})` : '';
@@ -433,6 +641,18 @@ function dismissCorrectiveFeedback() {
   advance();
 }
 
+// Shown near the staff whenever "Randomize key" picked one for the
+// current attempt; hidden entirely otherwise (see "Key signatures" above).
+function updateKeyDisplay(keyName) {
+  const el = document.getElementById('key-display');
+  if (!keyName) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.textContent = keyDisplayName(keyName);
+  el.classList.remove('hidden');
+}
+
 // --- Stats display ---------------------------------------------------------
 function averageResponseTime(responseTimes) {
   if (responseTimes.length === 0) return null;
@@ -462,13 +682,25 @@ function showNextNote() {
   // The lower note anchors clef choice for a chord — the same rule as a
   // single note, applied to whichever of the 1-2 target notes is lowest.
   const clef = chooseClef(Math.min(...item.midis));
-  session.current = { midi: item.midi, midis: item.midis, clef, isFirstPresentation: item.isFirstPresentation };
+  // Computed once here (not inside renderStaff) since it can involve a
+  // genuine coin flip — corrective feedback later needs to name the exact
+  // same spelling that was rendered, not a freshly re-rolled one.
+  const spellings = item.key ? spellChordInKey(item.midis, item.key) : null;
+  session.current = {
+    midi: item.midi,
+    midis: item.midis,
+    clef,
+    isFirstPresentation: item.isFirstPresentation,
+    key: item.key || null,
+    spellings,
+  };
   if (item.isFirstPresentation) {
     session.presentedCount += 1;
   }
   session.noteStartTime = Date.now();
   hideCorrectiveFeedback();
-  renderStaff(item.midis, clef);
+  renderStaff(item.midis, clef, { keyName: item.key || null, spellings });
+  updateKeyDisplay(item.key || null);
   updateStatsDisplay();
 }
 
@@ -508,6 +740,7 @@ function startSession(mode = 'normal') {
     : buildQueue(SESSION_LENGTH, {
         intervalMode: practiceOptions.interval,
         chromaticMode: practiceOptions.chromatic,
+        randomizeKeyMode: practiceOptions.randomizeKey,
       });
   // Drill mode with no recorded trouble scores has nothing to queue. The
   // button that triggers this is disabled in that case (see
@@ -560,7 +793,7 @@ function onNoteOn(midiNote) {
   if (hitIndex === -1) {
     flash('incorrect');
     showCorrectiveFeedback(session.current.midis);
-    requeue(session.current.midis, session.queue);
+    requeue(session.current.midis, session.queue, session.current.key);
     recordAttemptOutcome(session.current.midis, false);
     session.awaitingAdvance = true;
     correctiveFeedbackTimeout = setTimeout(() => {
@@ -820,7 +1053,7 @@ function initPianoInteraction() {
 // session is in progress. Applying it requires the explicit "Start new
 // session" action, so changing a setting can never silently discard
 // progress the user didn't ask to discard.
-const practiceOptions = { chromatic: false, interval: false };
+const practiceOptions = { chromatic: false, interval: false, randomizeKey: false };
 
 // Interval mode always draws both notes from the full chromatic range
 // (see SPEC.md v5 — a diatonic-only interval can't guarantee an exact
@@ -874,6 +1107,9 @@ function initPracticeOptions() {
     practiceOptions.interval = event.target.checked;
     updateChromaticCheckboxState();
     updateIntervalPianoHint();
+  });
+  document.getElementById('randomize-key-toggle').addEventListener('change', (event) => {
+    practiceOptions.randomizeKey = event.target.checked;
   });
   document.getElementById('interval-piano-hint-close').addEventListener('click', () => {
     intervalHintDismissed = true;
@@ -940,4 +1176,15 @@ window.__primavista = {
   intervalNameFor,
   dismissCorrectiveFeedback,
   pauseCorrectiveFeedback,
+  KEY_NAMES,
+  KEY_SIGNATURE_INFO,
+  RELATIVE_MINOR_NAME,
+  keyDisplayName,
+  pickRandomKey,
+  spellInKey,
+  spellNoteForKey,
+  spellChordInKey,
+  buildQueue,
+  formatVexKey,
+  formatDisplayName,
 };

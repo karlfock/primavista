@@ -4,7 +4,7 @@ Ideas for future features, not yet committed to or scheduled. Nothing here is de
 
 Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
 
-**Next number:** 9
+**Next number:** 10
 
 ## 2: Mixing interval/chromatic modes with plain single notes
 
@@ -18,12 +18,13 @@ Interval mode currently caps at 12 semitones (`MAX_INTERVAL_SEMITONES` in `app.j
 Should then maybe be a rule that left hand is below middle c and right hand above?
 TODO: refine
 
-## 6: Keys? Not only C-major
-Show the name of the key
-TODO: refine
-
 ## 7: Show the notes and the name of the interval, even after correct playing
 TODO: refine
 
 ## 8: Make the pause and close buttons a little bigger
 Makes it easier to not click the wrong one on iPad, probably make the entire red button a bit gigger. 
+
+## 9: Commit hook for backlog
+When commiting, check that the "next number" in top of this backlog is one bigger that the backlog item with the highest number.
+
+Use for example husky to create a pre commit hook. 
