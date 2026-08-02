@@ -811,6 +811,24 @@ test.describe('"Randomize key" mode (SPEC.md v11 / BACKLOG.md #6)', () => {
     expect(result).toMatchObject({ letter: 'f', accidental: null, octave: 4 });
   });
 
+  // Regression test: a real miss in D major on F#5 showed "That was F5"
+  // in corrective feedback instead of "F#5" — formatDisplayName was using
+  // the staff glyph (correctly null/omitted, since D major's key
+  // signature already covers F#) as if it were the real accidental, with
+  // nothing left to indicate the sharp in plain text. Text has no
+  // key-signature context to lean on, so it must spell out the real pitch
+  // regardless of what the staff needed to show.
+  test('a diatonic note still shows its real accidental in the display name, even with no glyph on the staff', async ({ page }) => {
+    await page.goto('/index.html');
+    const { vexKey, displayName } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const spelling = api.spellNoteForKey(78, 'D'); // F#5, diatonic in D major
+      return { vexKey: api.formatVexKey(spelling), displayName: api.formatDisplayName(spelling) };
+    });
+    expect(vexKey).toBe('f/5'); // no glyph needed on the staff — key signature covers it
+    expect(displayName).toBe('F#5'); // but the text must still say F#, not F
+  });
+
   test('a chromatic note that lands exactly on a key-altered letter is spelled with a natural sign', async ({ page }) => {
     await page.goto('/index.html');
     // Eb major flats B, E, A — E-natural has to cancel that with a natural sign.

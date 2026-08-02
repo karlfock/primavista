@@ -78,8 +78,17 @@ function formatVexKey({ letter, accidental, octave }) {
   return `${letter}${accidentalSuffix(accidental)}/${octave}`;
 }
 
-function formatDisplayName({ letter, accidental, octave }) {
-  return `${letter.toUpperCase()}${accidentalSuffix(accidental)}${octave}`;
+// `offset` (see "Key signatures" below) is the note's real semitone
+// deviation from the letter's natural pitch — present only on key-aware
+// spellings. `accidental` can be null there even when offset isn't zero
+// (a diatonic note needs no glyph on the staff, since the key signature
+// at the clef already covers it) — but plain text has no key-signature
+// context to lean on, so the display name has to spell out the real
+// accidental regardless of whether the staff needed to show it. For the
+// key-less path (no `offset`), `accidental` already is the real one.
+function formatDisplayName({ letter, accidental, octave, offset }) {
+  const textAccidental = offset === undefined ? accidental : (offset === 0 ? null : ACCIDENTAL_SYMBOL_BY_OFFSET[offset]);
+  return `${letter.toUpperCase()}${accidentalSuffix(textAccidental)}${octave}`;
 }
 
 function midiToVexKey(midi, chordMidis) {
@@ -218,7 +227,11 @@ function spellNoteForKey(midi, keyName) {
   // computed the same way — e.g. MIDI 60 spelled as B# lands in octave 3,
   // not 4, because it's B3 (natural pitch) raised a semitone, not C4.
   const octave = Math.floor((midi - offset) / 12) - 1;
-  return { letter, accidental, octave, hadChoice };
+  // offset is kept on the result (not just used internally for octave)
+  // so formatDisplayName can spell out the real accidental in plain text
+  // even when accidental is null (a diatonic note needs no glyph on the
+  // staff, but text has no key-signature context to omit it from).
+  return { letter, accidental, octave, offset, hadChoice };
 }
 
 // Spells a 1- or 2-note target against one key. For a chord, if the
@@ -245,10 +258,10 @@ function spellChordInKey(midis, keyName) {
   };
 
   const first = pick(0, null, null);
-  const results = [{ letter: first.letter, accidental: first.accidental, octave: first.octave }];
+  const results = [{ letter: first.letter, accidental: first.accidental, octave: first.octave, offset: first.offset }];
   if (midis.length > 1) {
     const second = pick(1, first.letter, first.octave);
-    results.push({ letter: second.letter, accidental: second.accidental, octave: second.octave });
+    results.push({ letter: second.letter, accidental: second.accidental, octave: second.octave, offset: second.offset });
   }
   return results;
 }
