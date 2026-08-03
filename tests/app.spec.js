@@ -997,6 +997,104 @@ test.describe('"Randomize key" mode (SPEC.md v11 / BACKLOG.md #6)', () => {
   });
 });
 
+test.describe('correct-interval-name reinforcement (SPEC.md v13 / BACKLOG.md #7)', () => {
+  test('a correct interval-mode attempt briefly names the interval type, without any note names', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    await startNewSession(page);
+    const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+    const expectedName = await page.evaluate((m) => window.__primavista.intervalNameFor(m), [low, high]);
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), high);
+
+    const indicator = page.locator('#correct-interval-name');
+    await expect(indicator).not.toHaveClass(/hidden/);
+    await expect(indicator).toHaveText(expectedName);
+    // Note names are never shown on success, interval or not (SPEC.md v3).
+    await expect(page.locator('#corrective-feedback')).toHaveClass(/hidden/);
+  });
+
+  test('a correct single-note attempt never shows the interval-name indicator', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), targetMidi);
+
+    await expect(page.locator('#correct-interval-name')).toHaveClass(/hidden/);
+  });
+
+  test('the indicator hides and the session advances after CORRECT_INTERVAL_NAME_MS', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    await startNewSession(page);
+    const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), high);
+    await expect(page.locator('#correct-interval-name')).not.toHaveClass(/hidden/);
+
+    await expect(page.locator('#correct-interval-name')).toHaveClass(/hidden/); // waits out the auto-hide via Playwright's polling
+    await expect(page.locator('#stat-attempts')).toHaveText('2 / 25'); // and the session actually advanced
+  });
+
+  test('input is blocked while the interval name is showing, same as a miss window', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    await startNewSession(page);
+    const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), high);
+    // Stray input during the brief pause must not be misread as a miss on
+    // the already-resolved (now-empty pending set) target.
+    await page.evaluate(() => window.__primavista.onNoteOn(21));
+
+    await expect(page.locator('#corrective-feedback')).toHaveClass(/hidden/);
+    await expect(page.locator('#stat-correct')).toHaveText('1');
+  });
+
+  // Regression test: starting a new session while the correct-interval-
+  // name's delayed advance is still pending used to leave that timer
+  // dangling, the same class of bug already fixed for corrective
+  // feedback (SPEC.md v9) — it would fire later and silently advance the
+  // new session by one extra note.
+  test('starting a new session while the interval-name delay is pending cancels it instead of later skipping a note', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    await startNewSession(page);
+    const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), high); // leaves the delayed-advance timer pending
+
+    await startNewSession(page); // starts a fresh session before that timer fires
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25');
+
+    const delayMs = await page.evaluate(() => window.__primavista.CORRECT_INTERVAL_NAME_MS);
+    await page.waitForTimeout(delayMs + 300);
+    await expect(page.locator('#stat-attempts')).toHaveText('1 / 25'); // unchanged — old timer didn't fire
+  });
+});
+
+test.describe('bigger pause/close touch targets (SPEC.md v13 / BACKLOG.md #8)', () => {
+  test('the corrective-feedback pause and close buttons have a comfortable minimum touch target', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const wrongMidi = await page.evaluate(() => {
+      const api = window.__primavista;
+      return api.NOTE_RANGE.find((m) => m !== api.session.current.midi);
+    });
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidi);
+
+    for (const id of ['#corrective-feedback-pause', '#corrective-feedback-close']) {
+      const box = await page.locator(id).boundingBox();
+      expect(box.width).toBeGreaterThanOrEqual(30);
+      expect(box.height).toBeGreaterThanOrEqual(30);
+    }
+  });
+});
+
 test.describe('weighted note selection based on historical misses (SPEC.md v6)', () => {
   test('trouble keys: notes are keyed by midi, intervals by sorted pair regardless of input order', async ({ page }) => {
     await page.goto('/index.html');

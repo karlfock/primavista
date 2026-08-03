@@ -15,7 +15,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v9 (shipped):** corrective feedback window extended to 10s but made closable early; the interval-mode piano hint is also closable.
 - **v10 (shipped):** corrective feedback also gets a pause button, for reading it at your own pace instead of racing a countdown.
 - **v11 (shipped):** "Randomize key" mode — each attempt can be spelled and rendered against one of the 15 standard key signatures instead of always assuming C major/A minor.
-- **v12 (this update):** the app displays its own version number in the footer.
+- **v12 (shipped):** the app displays its own version number in the footer.
+- **v13 (this update):** a correct interval-mode attempt briefly names the interval type; the corrective-feedback pause/close buttons are bigger, easier to tell apart on a touchscreen.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -274,3 +275,17 @@ A commit SHA was considered and rejected for this specific purpose: it identifie
 ## Definition of done for v12
 - The footer shows the app's current version as `vN`, matching the highest version number in this file's Status section.
 - All v1–v11 definition-of-done items continue to hold.
+
+## Correct-interval-name reinforcement, bigger touch targets (v13 change)
+
+Two independent, small additions:
+
+- **A correct interval-mode attempt briefly names the interval type** (e.g. "minor 2nd"), shown top-right on the staff panel. Never shows the note names themselves, and never appears for single notes — that would undercut the v3 "no note name shown on success" rationale (the retrieval-practice benefit depends on nothing revealing which specific notes were played; naming the interval *type* doesn't reveal that). Since correct single-note answers already advance immediately with nothing shown, showing interval-mode text needs a brief pause to actually be readable — `onNoteOn`'s correct-resolution path now delays `advance()` by `CORRECT_INTERVAL_NAME_MS` (900ms) specifically for a 2-note target, blocking input during that window the same way a miss already blocks input during its own feedback window (`session.awaitingAdvance`), so a stray note-on can't be misread against the already-resolved target. Starting a new session while this delay is pending cancels it, the same dangling-timer fix already applied to corrective feedback (v9).
+- **The corrective-feedback pause and close buttons are bigger** — found in real use on an iPad, where the two sitting right next to each other made it easy to tap the wrong one. `.dismiss-btn` (shared by both, and by the interval-mode piano hint's close button) got a bigger font size and an explicit minimum touch-target size, and the corrective-feedback pill itself got slightly more padding and spacing between its children.
+
+## Definition of done for v13
+- A correct interval-mode attempt shows the interval type (not the note names) briefly, then advances; a correct single-note attempt shows nothing and advances immediately, unchanged from v3.
+- Input during the interval-name pause is blocked, same as during a miss's corrective-feedback window; a note-on during that pause neither registers as a miss nor double-advances.
+- Starting a new session while the interval-name pause is pending does not later cause an extra, unrequested advance once the old delay would have elapsed.
+- The corrective-feedback pause/close buttons (and the interval-piano-hint close button, via the shared class) have a minimum ~32px touch target.
+- All v1–v12 definition-of-done items continue to hold.

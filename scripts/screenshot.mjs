@@ -87,6 +87,21 @@ await page.evaluate((m) => window.__primavista.onNoteOn(m), wrongMidiWithKey);
 await page.waitForTimeout(200);
 await page.screenshot({ path: path.join(OUT_DIR, '05-randomize-key-miss.png') });
 
+// A correct interval-mode attempt briefly names the interval type (see
+// BACKLOG.md #7) — worth eyeballing that it sits cleanly in the
+// top-right corner without colliding with the key-display label
+// (top-left) also visible here. "Start new session" (not "Play again")
+// since the previous step left an active session mid-play, not at the
+// summary screen.
+await page.locator('#interval-toggle').check();
+await page.locator('#start-session-btn').click();
+await page.waitForTimeout(200);
+const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+await page.evaluate((m) => window.__primavista.onNoteOn(m), high);
+await page.waitForTimeout(150);
+await page.screenshot({ path: path.join(OUT_DIR, '06-correct-interval-name.png') });
+
 await browser.close();
 server.close();
 console.log(`Screenshots written to ${OUT_DIR}`);

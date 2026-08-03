@@ -642,6 +642,26 @@ function hideCorrectiveFeedback() {
   document.getElementById('corrective-feedback').classList.add('hidden');
 }
 
+// --- Correct-interval-name reinforcement (BACKLOG.md #7) -----------------
+// A correct interval-mode attempt briefly names the interval type (e.g.
+// "minor 2nd") — but never the note names themselves, and never for
+// single notes. Reinforces the interval-type vocabulary without giving
+// away the actual pitch answer, so it doesn't undercut the v3 "no note
+// name shown on success" rationale (the retrieval-practice benefit still
+// depends on nothing revealing which specific notes were played).
+const CORRECT_INTERVAL_NAME_MS = 900;
+let correctIntervalNameTimeout = null;
+
+function showCorrectIntervalName(midis) {
+  const el = document.getElementById('correct-interval-name');
+  el.textContent = intervalNameFor(midis);
+  el.classList.remove('hidden');
+}
+
+function hideCorrectIntervalName() {
+  document.getElementById('correct-interval-name').classList.add('hidden');
+}
+
 // Stops the countdown without closing the box or advancing — for reading
 // the feedback for as long as needed on a touch device (no hover-to-pause
 // available), rather than racing a fixed window. Hides the pause button
@@ -728,6 +748,7 @@ function showNextNote() {
   }
   session.noteStartTime = Date.now();
   hideCorrectiveFeedback();
+  hideCorrectIntervalName();
   renderStaff(item.midis, clef, { keyName: item.key || null, spellings });
   updateKeyDisplay(item.key || null);
   updateStatsDisplay();
@@ -780,10 +801,15 @@ function startSession(mode = 'normal') {
   // Starting a session while a previous miss's corrective feedback is
   // still showing would otherwise leave its auto-advance timer dangling —
   // it'd fire later and call advance() against this new session's state,
-  // silently skipping a note.
+  // silently skipping a note. Same risk applies to the correct-interval-
+  // name's own delayed advance (see onNoteOn).
   if (correctiveFeedbackTimeout) {
     clearTimeout(correctiveFeedbackTimeout);
     correctiveFeedbackTimeout = null;
+  }
+  if (correctIntervalNameTimeout) {
+    clearTimeout(correctIntervalNameTimeout);
+    correctIntervalNameTimeout = null;
   }
 
   session.queue = queue;
@@ -844,7 +870,21 @@ function onNoteOn(midiNote) {
   recordAttemptOutcome(session.current.midis, true);
   flash('correct');
   updateStatsDisplay();
-  advance();
+  if (session.current.midis.length === 2) {
+    // Interval mode only (see "Correct-interval-name reinforcement"
+    // above) — briefly delays the advance so there's actually time to
+    // read the interval name, unlike the immediate-advance path for
+    // single notes (which show nothing on success at all).
+    showCorrectIntervalName(session.current.midis);
+    session.awaitingAdvance = true;
+    correctIntervalNameTimeout = setTimeout(() => {
+      correctIntervalNameTimeout = null;
+      session.awaitingAdvance = false;
+      advance();
+    }, CORRECT_INTERVAL_NAME_MS);
+  } else {
+    advance();
+  }
 }
 
 // --- Web MIDI -------------------------------------------------------------
@@ -1216,4 +1256,5 @@ window.__primavista = {
   buildQueue,
   formatVexKey,
   formatDisplayName,
+  CORRECT_INTERVAL_NAME_MS,
 };
