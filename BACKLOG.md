@@ -20,11 +20,6 @@ Show the name of the interval also when enter a correct interval. Don't do this 
 ## 8: Make the pause and close buttons a little bigger
 Makes it easier to not click the wrong one on iPad, probably make the entire red button a bit gigger. 
 
-## 9: Commit hook for backlog
-When commiting, check that the "next number" in top of this backlog is one bigger that the backlog item with the highest number.
-
-Use for example husky to create a pre commit hook.
-
 ## 10: Show version in app
 When shipping a version, for example v11, then also display that version some where on the app page, it could be part of the technical requirements text in the bottom.
 

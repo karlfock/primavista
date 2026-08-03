@@ -5,11 +5,13 @@
   "description": "Note-reading trainer: match a random note on a grand staff by playing it on a connected MIDI keyboard.",
   "scripts": {
     "start": "npx --yes serve .",
+    "pretest": "npm run check:backlog",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "screenshot": "node scripts/screenshot.mjs",
     "verify:piano-interval": "node scripts/verify-virtual-piano-interval-input.mjs",
-    "verify:pause": "node scripts/verify-corrective-feedback-pause.mjs"
+    "verify:pause": "node scripts/verify-corrective-feedback-pause.mjs",
+    "check:backlog": "node scripts/check-backlog-numbering.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0"
