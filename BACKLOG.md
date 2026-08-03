@@ -20,9 +20,6 @@ Show the name of the interval also when enter a correct interval. Don't do this 
 ## 8: Make the pause and close buttons a little bigger
 Makes it easier to not click the wrong one on iPad, probably make the entire red button a bit gigger. 
 
-## 10: Show version in app
-When shipping a version, for example v11, then also display that version some where on the app page, it could be part of the technical requirements text in the bottom.
-
 ## 11: Show Swedish octave names
 In the error message where the user sees the correct tones, it is displayed as below:
 C4 - C5. It would be nice to also show the Swedish names of the octaves, even though it might get ugly UX wise, something to test out. 

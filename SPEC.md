@@ -14,7 +14,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v8 (shipped):** interval type named in corrective feedback; corrective feedback window doubled; a hint for entering interval-mode chords on the virtual piano.
 - **v9 (shipped):** corrective feedback window extended to 10s but made closable early; the interval-mode piano hint is also closable.
 - **v10 (shipped):** corrective feedback also gets a pause button, for reading it at your own pace instead of racing a countdown.
-- **v11 (this update):** "Randomize key" mode — each attempt can be spelled and rendered against one of the 15 standard key signatures instead of always assuming C major/A minor.
+- **v11 (shipped):** "Randomize key" mode — each attempt can be spelled and rendered against one of the 15 standard key signatures instead of always assuming C major/A minor.
+- **v12 (this update):** the app displays its own version number in the footer.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -263,3 +264,13 @@ A new checkbox, **"Randomize key"**, off by default. Unchecked, the app behaves 
 - Corrective feedback on a miss names the exact spelling that was rendered on the staff, never a freshly re-rolled one.
 - A diatonic note's display name (in corrective feedback) always spells out its real accidental (e.g. "F#5"), even though the staff correctly shows no glyph for it — the two are allowed to differ, since text has no key-signature context the way the staff does.
 - All v1–v10 definition-of-done items continue to hold.
+
+## App version display (v12 change)
+
+A small `vN` line in the footer (`#app-version` in `index.html`), below the browser-support note. It's a plain hardcoded string, not computed from anything — this app deliberately has no build step (see README), so there's no automatic source for it (e.g. a Vercel build-time env var like `VERCEL_GIT_COMMIT_SHA` would need one). It has to be bumped by hand alongside this file's own Status version number; `CLAUDE.md`'s working conventions now call this out explicitly as part of the existing "update SPEC.md when shipping a change" step, so the two don't drift apart.
+
+A commit SHA was considered and rejected for this specific purpose: it identifies an exact code snapshot precisely, but doesn't mean anything at a glance the way "v11" (tied to a feature milestone) does.
+
+## Definition of done for v12
+- The footer shows the app's current version as `vN`, matching the highest version number in this file's Status section.
+- All v1–v11 definition-of-done items continue to hold.

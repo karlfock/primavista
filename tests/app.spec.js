@@ -62,6 +62,13 @@ test.describe('page load', () => {
     await expect(page.locator('#staff svg')).toHaveCount(1);
     expect(errors).toEqual([]);
   });
+
+  // Regex, not an exact version string, so this doesn't need editing every
+  // time SPEC.md's version bumps (see backlog item #10 / CLAUDE.md).
+  test('shows the current app version in the footer', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#app-version')).toHaveText(/^v\d+$/);
+  });
 });
 
 test.describe('pitch range (SPEC.md v2: A0-C7)', () => {
