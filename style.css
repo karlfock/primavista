@@ -223,6 +223,20 @@ main {
   z-index: 1;
 }
 
+/* Deliberately quieter than .key-display (lower opacity, no bold) — this
+   is incidental reference info shown on every note (BACKLOG.md #11),
+   not something the drill is testing, so it shouldn't compete for
+   attention the way the key label does. */
+.octave-name {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 1rem;
+  color: #6b6b63;
+  opacity: 0.7;
+  font-size: 0.75rem;
+  z-index: 1;
+}
+
 .corrective-feedback {
   position: absolute;
   top: 1rem;

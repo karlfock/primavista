@@ -99,6 +99,37 @@ function midiToDisplayName(midi, chordMidis) {
   return formatDisplayName(spellNote(midi, chordMidis));
 }
 
+// --- Swedish octave names (BACKLOG.md #11) -------------------------------
+// The traditional Swedish/German octave-naming system, keyed by the same
+// numeric octave spellNote/spellChordInKey already produce (where middle C
+// is octave 4, i.e. "ettstrukna C") — so this is a pure lookup, not a
+// separate pitch computation. Covers the app's full pitch range
+// (MIN_MIDI_NOTE=21/A0 -> octave 0, PIANO_MAX_MIDI_NOTE=108/C8 -> octave 8).
+const SWEDISH_OCTAVE_NAMES = {
+  0: 'Subkontraoktaven',
+  1: 'Kontraoktaven',
+  2: 'Stora oktaven',
+  3: 'Lilla oktaven',
+  4: 'Ettstrukna oktaven',
+  5: 'Tvåstrukna oktaven',
+  6: 'Trestrukna oktaven',
+  7: 'Fyrstrukna oktaven',
+  8: 'Femstrukna oktaven',
+};
+
+function swedishOctaveName(octave) {
+  return SWEDISH_OCTAVE_NAMES[octave] || `Oktaven ${octave}`;
+}
+
+// octaves is 1 or 2 numeric octaves (a single note, or a two-note chord —
+// see BACKLOG.md #11: lower first, higher second). Two notes landing in the
+// same Swedish octave collapse to one name rather than repeating it.
+function swedishOctaveLabel(octaves) {
+  const sorted = [...octaves].sort((a, b) => a - b);
+  const names = [...new Set(sorted.map(swedishOctaveName))];
+  return names.join(' / ');
+}
+
 // --- Key signatures ("Randomize key" mode, see BACKLOG.md #6) -----------
 // Real music is essentially never "in C" — this lets each attempt pick one
 // of the 15 standard key signatures (every major key that doesn't need a
@@ -702,6 +733,19 @@ function updateKeyDisplay(keyName) {
   el.classList.remove('hidden');
 }
 
+// Shown discreetly for every note/chord (unlike the key label above, this
+// isn't conditional on "Randomize key" — see BACKLOG.md #11). Reuses
+// session.current's already-computed spellings (when "Randomize key" is on)
+// for the same reason showCorrectiveFeedback does: a key-aware spelling can
+// land a note in a different octave than the plain midi/12 computation
+// (e.g. B# vs C), so it has to match what's actually notated on the staff.
+function updateOctaveNameDisplay(midis, spellings) {
+  const el = document.getElementById('octave-name');
+  const octaves = spellings ? spellings.map((s) => s.octave) : midis.map((midi) => Math.floor(midi / 12) - 1);
+  el.textContent = swedishOctaveLabel(octaves);
+  el.classList.remove('hidden');
+}
+
 // --- Stats display ---------------------------------------------------------
 function averageResponseTime(responseTimes) {
   if (responseTimes.length === 0) return null;
@@ -751,6 +795,7 @@ function showNextNote() {
   hideCorrectIntervalName();
   renderStaff(item.midis, clef, { keyName: item.key || null, spellings });
   updateKeyDisplay(item.key || null);
+  updateOctaveNameDisplay(item.midis, spellings);
   updateStatsDisplay();
 }
 
@@ -1257,4 +1302,7 @@ window.__primavista = {
   formatVexKey,
   formatDisplayName,
   CORRECT_INTERVAL_NAME_MS,
+  SWEDISH_OCTAVE_NAMES,
+  swedishOctaveName,
+  swedishOctaveLabel,
 };

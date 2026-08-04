@@ -17,7 +17,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v11 (shipped):** "Randomize key" mode — each attempt can be spelled and rendered against one of the 15 standard key signatures instead of always assuming C major/A minor.
 - **v12 (shipped):** the app displays its own version number in the footer.
 - **v13 (shipped):** a correct interval-mode attempt briefly names the interval type; the corrective-feedback pause/close buttons are bigger, easier to tell apart on a touchscreen.
-- **v14 (this update):** the corrective-feedback (miss) alert moved from top-center to top-right, matching the correct-interval-name box, so it no longer covers the clef/notes on the staff (BACKLOG.md #12).
+- **v14 (shipped):** the corrective-feedback (miss) alert moved from top-center to top-right, matching the correct-interval-name box, so it no longer covers the clef/notes on the staff (BACKLOG.md #12).
+- **v15 (this update):** every note/interval shown on the staff is now also labeled with its Swedish octave name(s), discreetly in the bottom-left corner of the staff panel (BACKLOG.md #11).
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -299,3 +300,17 @@ The corrective-feedback (miss) alert was centered at the top of the staff panel 
 - The corrective-feedback alert renders in the top-right corner of the staff panel, not centered over it.
 - The alert does not overlap the note glyph(s) rendered on the staff for a miss.
 - All v1–v13 definition-of-done items continue to hold.
+
+## Swedish octave names (v15 change)
+
+Every note/interval shown on the staff is now also labeled with its Swedish octave name(s) (`SWEDISH_OCTAVE_NAMES`/`swedishOctaveName`/`swedishOctaveLabel` in `app.js`), e.g. "Ettstrukna oktaven" for middle C's octave. Shown in the bottom-left corner of the staff panel (`#octave-name`), deliberately quieter (lower opacity, no bold) than the top-left key-display label — this is incidental reference info, not something the drill is testing. Unlike the key-display label, it isn't conditional on "Randomize key" — it shows for every attempt.
+
+For a two-note (interval-mode) target, both octave names are shown as `<lower> / <higher>`; if both notes land in the same Swedish octave, the name is shown once, not repeated. The octave used matches whatever spelling is actually notated on the staff — with "Randomize key" on, that's `session.current.spellings`' octave field (which can differ from a plain `midi`-based octave at an enharmonic edge, e.g. B# vs C, the same reasoning already applied to corrective feedback's note naming); otherwise it's the plain `Math.floor(midi / 12) - 1` computation.
+
+This supersedes the original idea in BACKLOG.md #11 (showing Swedish names only inside the corrective-feedback error message) — showing it proactively, for every attempt, in a fixed discreet spot was judged a better fit than only surfacing it on a miss.
+
+## Definition of done for v15
+- Every attempt (single note or interval) shows its Swedish octave name(s) in the staff panel's bottom-left corner as soon as the note/interval is rendered — not only on a miss.
+- A two-note target shows `<lower> / <higher>`; the same Swedish octave for both notes collapses to one name.
+- With "Randomize key" on, the octave name matches the spelling actually notated on the staff, not a raw midi-based computation that could disagree with it at an enharmonic edge.
+- All v1–v14 definition-of-done items continue to hold.

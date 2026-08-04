@@ -1107,6 +1107,98 @@ test.describe('correct-interval-name reinforcement (SPEC.md v13 / BACKLOG.md #7)
   });
 });
 
+test.describe('Swedish octave names (BACKLOG.md #11)', () => {
+  test('swedishOctaveName maps the app\'s full pitch range, middle C\'s octave included', async ({ page }) => {
+    await page.goto('/index.html');
+    const names = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        middleC: api.swedishOctaveName(Math.floor(60 / 12) - 1), // MIDI 60 = middle C
+        lowest: api.swedishOctaveName(Math.floor(api.MIN_MIDI_NOTE / 12) - 1),
+        highest: api.swedishOctaveName(Math.floor(api.PIANO_MAX_MIDI_NOTE / 12) - 1),
+        outOfRange: api.swedishOctaveName(99),
+      };
+    });
+    expect(names.middleC).toBe('Ettstrukna oktaven');
+    expect(names.lowest).toBe('Subkontraoktaven');
+    expect(names.highest).toBe('Femstrukna oktaven');
+    expect(names.outOfRange).not.toBe(''); // never blank, even for an octave with no table entry
+  });
+
+  test('swedishOctaveLabel orders low-to-high regardless of input order, and collapses a shared octave to one name', async ({ page }) => {
+    await page.goto('/index.html');
+    const labels = await page.evaluate(() => {
+      const api = window.__primavista;
+      return {
+        single: api.swedishOctaveLabel([4]),
+        lowHigh: api.swedishOctaveLabel([3, 5]),
+        highLow: api.swedishOctaveLabel([5, 3]), // same pair, reversed input order
+        sameOctave: api.swedishOctaveLabel([4, 4]),
+      };
+    });
+    expect(labels.single).toBe('Ettstrukna oktaven');
+    expect(labels.lowHigh).toBe('Lilla oktaven / Tvåstrukna oktaven');
+    expect(labels.highLow).toBe('Lilla oktaven / Tvåstrukna oktaven');
+    expect(labels.sameOctave).toBe('Ettstrukna oktaven'); // no "X / X" repetition
+  });
+
+  test('is hidden in the idle state, before any note has been shown', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#octave-name')).toHaveClass(/hidden/);
+  });
+
+  test('shows the Swedish octave name for a single-note attempt, matching the note actually rendered', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const expected = await page.evaluate(() => {
+      const api = window.__primavista;
+      const octave = Math.floor(api.session.current.midi / 12) - 1;
+      return api.swedishOctaveName(octave);
+    });
+    await expect(page.locator('#octave-name')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#octave-name')).toHaveText(expected);
+  });
+
+  test('shows "lower / higher" for an interval-mode attempt, and updates on every new note', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    await startNewSession(page);
+    const expected = await page.evaluate(() => {
+      const api = window.__primavista;
+      const octaves = api.session.current.midis.map((midi) => Math.floor(midi / 12) - 1);
+      return api.swedishOctaveLabel(octaves);
+    });
+    await expect(page.locator('#octave-name')).toHaveText(expected);
+
+    // Answer correctly and confirm the label updates for the next attempt too,
+    // not just the first note shown when the session started.
+    const [low, high] = await page.evaluate(() => window.__primavista.session.current.midis);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), low);
+    await page.evaluate((m) => window.__primavista.onNoteOn(m), high);
+    const delayMs = await page.evaluate(() => window.__primavista.CORRECT_INTERVAL_NAME_MS);
+    await page.waitForTimeout(delayMs + 200);
+    const expectedNext = await page.evaluate(() => {
+      const api = window.__primavista;
+      const octaves = api.session.current.midis.map((midi) => Math.floor(midi / 12) - 1);
+      return api.swedishOctaveLabel(octaves);
+    });
+    await expect(page.locator('#octave-name')).toHaveText(expectedNext);
+  });
+
+  test('with "Randomize key" on, the octave name follows the spelling actually rendered, not the raw midi', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#randomize-key-toggle').check();
+    await startNewSession(page);
+    const expected = await page.evaluate(() => {
+      const api = window.__primavista;
+      const { spellings, midis } = api.session.current;
+      const octaves = spellings ? spellings.map((s) => s.octave) : midis.map((m) => Math.floor(m / 12) - 1);
+      return api.swedishOctaveLabel(octaves);
+    });
+    await expect(page.locator('#octave-name')).toHaveText(expected);
+  });
+});
+
 test.describe('bigger pause/close touch targets (SPEC.md v13 / BACKLOG.md #8)', () => {
   test('the corrective-feedback pause and close buttons have a comfortable minimum touch target', async ({ page }) => {
     await page.goto('/index.html');

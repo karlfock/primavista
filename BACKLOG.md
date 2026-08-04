@@ -14,10 +14,6 @@ Interval mode currently caps at 12 semitones (`MAX_INTERVAL_SEMITONES` in `app.j
 Should then maybe be a rule that left hand is below middle c and right hand above?
 TODO: refine
 
-## 11: Show Swedish octave names
-In the error message where the user sees the correct tones, it is displayed as below:
-C4 - C5. It would be nice to also show the Swedish names of the octaves, even though it might get ugly UX wise, something to test out. 
-
 ## 13: Cookies to save user settings
 Add cookie to save user settings below:
 - chromatic notes
