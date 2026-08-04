@@ -1169,6 +1169,44 @@ function initPianoInteraction() {
 // progress the user didn't ask to discard.
 const practiceOptions = { chromatic: false, interval: false, randomizeKey: false };
 
+// Persists the three checkboxes above plus the interval-piano-hint
+// dismissal across reloads/visits (BACKLOG.md #13), so returning users get
+// their usual setup back instead of re-checking it every time. One JSON
+// blob in localStorage rather than real cookies — kept consistent with the
+// trouble-score persistence above, which already uses a 'primavista:'
+// prefixed localStorage key for the same reason (no server involved, no
+// cookie expiry/size/path concerns to manage).
+const SETTINGS_STORAGE_KEY = 'primavista:settings';
+
+// localStorage can throw (private browsing, quota, disabled) — like trouble
+// scores above, this is a nice-to-have, so failures just fall back to
+// defaults/no-op rather than breaking the app.
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function saveSettings(settings) {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch (err) {
+    // Not persisted this time; non-fatal.
+  }
+}
+
+function persistCurrentSettings() {
+  saveSettings({
+    chromatic: practiceOptions.chromatic,
+    interval: practiceOptions.interval,
+    randomizeKey: practiceOptions.randomizeKey,
+    intervalHintDismissed,
+  });
+}
+
 // Interval mode always draws both notes from the full chromatic range
 // (see SPEC.md v5 — a diatonic-only interval can't guarantee an exact
 // interval quality), independent of the "Chromatic notes" checkbox. Left
@@ -1203,9 +1241,9 @@ function setDrillButtonAvailability(hasWeakSpots) {
 // rather than leaving it to be figured out by trial and error.
 //
 // Dismissing it (the close button) is a lightweight "I've got it, stop
-// taking up space" — not persisted across reloads, since it only ever
-// shows up while interval mode is checked, and re-checking interval mode
-// after a reload is a fine trigger to show it again.
+// taking up space" — persisted via persistCurrentSettings/loadSettings
+// (BACKLOG.md #13), so it stays dismissed across reloads instead of
+// reappearing every time interval mode is re-checked.
 let intervalHintDismissed = false;
 
 function updateIntervalPianoHint() {
@@ -1214,20 +1252,35 @@ function updateIntervalPianoHint() {
 }
 
 function initPracticeOptions() {
+  const saved = loadSettings();
+  practiceOptions.chromatic = !!saved.chromatic;
+  practiceOptions.interval = !!saved.interval;
+  practiceOptions.randomizeKey = !!saved.randomizeKey;
+  intervalHintDismissed = !!saved.intervalHintDismissed;
+  document.getElementById('chromatic-toggle').checked = practiceOptions.chromatic;
+  document.getElementById('interval-toggle').checked = practiceOptions.interval;
+  document.getElementById('randomize-key-toggle').checked = practiceOptions.randomizeKey;
+  updateChromaticCheckboxState();
+  updateIntervalPianoHint();
+
   document.getElementById('chromatic-toggle').addEventListener('change', (event) => {
     practiceOptions.chromatic = event.target.checked;
+    persistCurrentSettings();
   });
   document.getElementById('interval-toggle').addEventListener('change', (event) => {
     practiceOptions.interval = event.target.checked;
     updateChromaticCheckboxState();
     updateIntervalPianoHint();
+    persistCurrentSettings();
   });
   document.getElementById('randomize-key-toggle').addEventListener('change', (event) => {
     practiceOptions.randomizeKey = event.target.checked;
+    persistCurrentSettings();
   });
   document.getElementById('interval-piano-hint-close').addEventListener('click', () => {
     intervalHintDismissed = true;
     updateIntervalPianoHint();
+    persistCurrentSettings();
   });
   document.getElementById('corrective-feedback-pause').addEventListener('click', pauseCorrectiveFeedback);
   document.getElementById('corrective-feedback-close').addEventListener('click', dismissCorrectiveFeedback);
@@ -1305,4 +1358,7 @@ window.__primavista = {
   SWEDISH_OCTAVE_NAMES,
   swedishOctaveName,
   swedishOctaveLabel,
+  SETTINGS_STORAGE_KEY,
+  loadSettings,
+  saveSettings,
 };

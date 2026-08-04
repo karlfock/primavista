@@ -13,10 +13,3 @@ Interval mode currently caps at 12 semitones (`MAX_INTERVAL_SEMITONES` in `app.j
 ## 5: Two hands?
 Should then maybe be a rule that left hand is below middle c and right hand above?
 TODO: refine
-
-## 13: Cookies to save user settings
-Add cookie to save user settings below:
-- chromatic notes
-- interval mode
-- randomize key
-- "On the on-screen piano" info. Once closed, save in cookie so it doesn't show up again.

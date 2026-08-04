@@ -1199,6 +1199,87 @@ test.describe('Swedish octave names (BACKLOG.md #11)', () => {
   });
 });
 
+test.describe('persisted practice-option preferences (BACKLOG.md #13)', () => {
+  test('checking chromatic, interval, and randomize-key survives a reload', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#chromatic-toggle').check();
+    await page.locator('#interval-toggle').check();
+    await page.locator('#randomize-key-toggle').check();
+
+    await page.reload();
+
+    await expect(page.locator('#interval-toggle')).toBeChecked();
+    await expect(page.locator('#randomize-key-toggle')).toBeChecked();
+    // Chromatic reads as checked too, since interval mode forces it on
+    // (see updateChromaticCheckboxState) — the underlying preference is
+    // still checked directly below.
+    const options = await page.evaluate(() => window.__primavista.practiceOptions);
+    expect(options).toEqual({ chromatic: true, interval: true, randomizeKey: true });
+  });
+
+  test('unchecking a previously-saved option also survives a reload', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#chromatic-toggle').check();
+    await page.reload();
+    await expect(page.locator('#chromatic-toggle')).toBeChecked();
+
+    await page.locator('#chromatic-toggle').uncheck();
+    await page.reload();
+
+    await expect(page.locator('#chromatic-toggle')).not.toBeChecked();
+    const chromatic = await page.evaluate(() => window.__primavista.practiceOptions.chromatic);
+    expect(chromatic).toBe(false);
+  });
+
+  test('dismissing the interval-piano hint survives a reload, unlike within-load dismissal alone', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#interval-toggle').check();
+    await page.locator('#interval-piano-hint-close').click();
+
+    await page.reload();
+    await page.locator('#interval-toggle').check();
+
+    await expect(page.locator('#interval-piano-hint')).toHaveClass(/hidden/);
+  });
+
+  test('settings are stored under the primavista: prefixed localStorage key', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.locator('#randomize-key-toggle').check();
+
+    const stored = await page.evaluate(() => {
+      const api = window.__primavista;
+      return JSON.parse(window.localStorage.getItem(api.SETTINGS_STORAGE_KEY));
+    });
+    expect(stored).toEqual({
+      chromatic: false,
+      interval: false,
+      randomizeKey: true,
+      intervalHintDismissed: false,
+    });
+  });
+
+  test('with no saved settings, a fresh load falls back to all options unchecked', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#chromatic-toggle')).not.toBeChecked();
+    await expect(page.locator('#interval-toggle')).not.toBeChecked();
+    await expect(page.locator('#randomize-key-toggle')).not.toBeChecked();
+  });
+
+  test('a broken localStorage does not crash boot and falls back to defaults', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem = () => { throw new Error('quota exceeded'); };
+      window.localStorage.getItem = () => { throw new Error('quota exceeded'); };
+    });
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+
+    await page.goto('/index.html');
+
+    expect(errors).toEqual([]);
+    await expect(page.locator('#chromatic-toggle')).not.toBeChecked();
+  });
+});
+
 test.describe('bigger pause/close touch targets (SPEC.md v13 / BACKLOG.md #8)', () => {
   test('the corrective-feedback pause and close buttons have a comfortable minimum touch target', async ({ page }) => {
     await page.goto('/index.html');

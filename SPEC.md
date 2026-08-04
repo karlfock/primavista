@@ -19,7 +19,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v13 (shipped):** a correct interval-mode attempt briefly names the interval type; the corrective-feedback pause/close buttons are bigger, easier to tell apart on a touchscreen.
 - **v14 (shipped):** the corrective-feedback (miss) alert moved from top-center to top-right, matching the correct-interval-name box, so it no longer covers the clef/notes on the staff (BACKLOG.md #12).
 - **v15 (shipped):** every note/interval shown on the staff is now also labeled with its Swedish octave name(s), discreetly in the bottom-left corner of the staff panel (BACKLOG.md #11).
-- **v16 (this update):** each Swedish octave name is now suffixed with its standard scientific-pitch octave number, e.g. "Ettstrukna oktaven (4)".
+- **v16 (shipped):** each Swedish octave name is now suffixed with its standard scientific-pitch octave number, e.g. "Ettstrukna oktaven (4)".
+- **v17 (this update):** the three practice-option checkboxes (chromatic notes, interval mode, randomize key) and the interval-piano-hint dismissal now persist across reloads/visits (BACKLOG.md #13).
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -43,7 +44,7 @@ Previously the app kept waiting after a wrong answer until the correct note was 
 - ~~No chords — single notes only.~~ **Superseded in v5** for interval mode specifically — see below. Plain single-note mode is unaffected and remains the default.
 - No 8va/15ma notation.
 - ~~No software/on-screen piano fallback — MIDI input only.~~ **Superseded in v4** — see Virtual piano below.
-- ~~No user accounts, no backend, no persistence beyond the current browser session.~~ **Partially superseded in v6** — per-note/per-interval trouble scores now persist in `localStorage` across sessions (see Weighted note selection below). Still true in every other respect: no accounts, no backend, no server-side data, nothing that syncs across devices or survives clearing browser data.
+- ~~No user accounts, no backend, no persistence beyond the current browser session.~~ **Partially superseded in v6 and v17** — per-note/per-interval trouble scores (v6) and the practice-option checkboxes/interval-hint dismissal (v17) now persist in `localStorage` across sessions (see Weighted note selection and Persisted practice-option preferences below). Still true in every other respect: no accounts, no backend, no server-side data, nothing that syncs across devices or survives clearing browser data.
 ## Pitch range (v2 change)
 Extended at the bottom, unchanged at the top:
 
@@ -323,3 +324,17 @@ Each entry in `SWEDISH_OCTAVE_NAMES` (`app.js`) now carries its standard scienti
 ## Definition of done for v16
 - Every Swedish octave name shown anywhere in the app (single-note or interval-mode, both members of `SWEDISH_OCTAVE_NAMES`) includes its standard octave number in parentheses.
 - All v1–v15 definition-of-done items continue to hold.
+
+## Persisted practice-option preferences (v17 change)
+
+The "Chromatic notes", "Interval mode", and "Randomize key" checkboxes, plus whether the interval-piano hint has been dismissed, are now remembered across page reloads and future visits (BACKLOG.md #13) — a returning user gets their usual setup back instead of re-checking it every time. Stored as one JSON blob under the `primavista:settings` `localStorage` key (`loadSettings`/`saveSettings`/`persistCurrentSettings` in `app.js`), consistent with how per-note/per-interval trouble scores already persist (see Weighted note selection, v6) — a plain-object `localStorage` blob rather than a real cookie, since there's no server involved and no cookie expiry/size/path concerns to manage. `initPracticeOptions` reads it once at boot to seed `practiceOptions` and the checkbox DOM state before wiring up the `change` listeners, each of which calls `persistCurrentSettings()` after updating state. Like trouble scores, a `localStorage` failure (private browsing, quota, disabled) is non-fatal — it just falls back to the all-off defaults instead of breaking the app.
+
+This changes the interval-piano hint's dismiss behavior from BACKLOG.md #9/SPEC.md v9: previously "re-checking interval mode after a reload" was a deliberate trigger to show the hint again; now the dismissal itself survives a reload, so the hint only reappears if it was never dismissed in the first place (or `localStorage` was cleared).
+
+## Definition of done for v17
+- Checking any of "Chromatic notes", "Interval mode", "Randomize key" and reloading the page restores that checkbox's checked state (and, for interval mode, the "chromatic forced on" display it drives).
+- Unchecking a previously-saved option and reloading restores the unchecked state.
+- Dismissing the interval-piano hint and reloading, then re-checking interval mode, does **not** show the hint again.
+- With no saved settings (first visit, or `localStorage` cleared), all three checkboxes default to unchecked, same as before v17.
+- A broken/throwing `localStorage` does not crash boot; the app falls back to the same all-off defaults.
+- All v1–v16 definition-of-done items continue to hold.
