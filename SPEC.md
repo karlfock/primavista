@@ -20,7 +20,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v14 (shipped):** the corrective-feedback (miss) alert moved from top-center to top-right, matching the correct-interval-name box, so it no longer covers the clef/notes on the staff (BACKLOG.md #12).
 - **v15 (shipped):** every note/interval shown on the staff is now also labeled with its Swedish octave name(s), discreetly in the bottom-left corner of the staff panel (BACKLOG.md #11).
 - **v16 (shipped):** each Swedish octave name is now suffixed with its standard scientific-pitch octave number, e.g. "Ettstrukna oktaven (4)".
-- **v17 (this update):** the three practice-option checkboxes (chromatic notes, interval mode, randomize key) and the interval-piano-hint dismissal now persist across reloads/visits (BACKLOG.md #13).
+- **v17 (shipped):** the three practice-option checkboxes (chromatic notes, interval mode, randomize key) and the interval-piano-hint dismissal now persist across reloads/visits (BACKLOG.md #13).
+- **v18 (this update):** interval mode's maximum interval widened from an octave (12 semitones) to a major 10th (16 semitones) (BACKLOG.md #4).
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -127,7 +128,7 @@ An on-screen piano keyboard, usable with no MIDI device connected at all:
 Two independent toggles, both off by default (default behavior is unchanged from v4):
 
 - **Chromatic notes:** single-note mode draws from all 12 pitch classes in the A0–C7 range instead of just naturals. Still "in C" — no key signature, so accidentals appear ad hoc rather than implied by a key.
-- **Interval mode:** each target becomes a **two-note chord** — a random true chromatic interval (1–12 semitones, minor 2nd through octave) rather than a diatonic/staff-distance interval. A diatonic-only approach was considered and rejected: it can't guarantee an exact interval quality using only natural notes (there's no natural note a minor third above C), and a fixed/predictable interval type defeats the point of the drill (you'd learn to read one note and apply a memorized offset instead of actually judging the gap between two notes).
+- **Interval mode:** each target becomes a **two-note chord** — a random true chromatic interval (~~1–12 semitones, minor 2nd through octave~~ **extended to 1–16 semitones, minor 2nd through major 10th, in v18** — see below) rather than a diatonic/staff-distance interval. A diatonic-only approach was considered and rejected: it can't guarantee an exact interval quality using only natural notes (there's no natural note a minor third above C), and a fixed/predictable interval type defeats the point of the drill (you'd learn to read one note and apply a memorized offset instead of actually judging the gap between two notes).
 
 Both notes of an interval can be anywhere in the chromatic range (not just naturals) — this is why chromatic-note spelling/rendering is shared infrastructure between the two toggles rather than being interval-specific.
 
@@ -148,7 +149,7 @@ This extends to the very first session too: the app now loads into an **idle sta
 ## Definition of done for v5
 - With both toggles off, behavior is unchanged from v4 (single natural-note targets).
 - "Chromatic notes" checked: single-note targets can be any of the 12 pitch classes, correctly notated with sharps where needed.
-- "Interval mode" checked: each target is a random two-note chord 1–12 semitones apart, rendered as a stacked chord (VexFlow handles second-interval notehead offsetting automatically); both notes must be played (order-independent) to advance; any other note-on is an immediate miss showing both target note names.
+- "Interval mode" checked: each target is a random two-note chord ~~1–12~~ **1–16 (v18)** semitones apart, rendered as a stacked chord (VexFlow handles second-interval notehead offsetting automatically); both notes must be played (order-independent) to advance; any other note-on is an immediate miss showing both target note names.
 - A minor-second chord landing on a natural + its own sharp (e.g. F + F#) is respelled so the sharp note uses the enharmonic flat of the next letter (Gb, not F#), avoiding two same-letter noteheads distinguished only by an accidental — both the staff notation and the corrective-feedback text reflect the same respelling.
 - Checking/unchecking either box never alters the session already in progress; a "Start new session" button applies the current settings explicitly.
 - While interval mode is checked, "Chromatic notes" shows as checked and disabled; unchecking interval mode restores whatever the user had it set to before.
@@ -338,3 +339,15 @@ This changes the interval-piano hint's dismiss behavior from BACKLOG.md #9/SPEC.
 - With no saved settings (first visit, or `localStorage` cleared), all three checkboxes default to unchecked, same as before v17.
 - A broken/throwing `localStorage` does not crash boot; the app falls back to the same all-off defaults.
 - All v1–v16 definition-of-done items continue to hold.
+
+## Wider interval-mode range (v18 change)
+
+`MAX_INTERVAL_SEMITONES` (`app.js`) raised from 12 (an octave) to 16 (a major 10th) (BACKLOG.md #4) — interval mode can now present any true chromatic interval from a minor 2nd through a major 10th, not just up to an octave. Capped at a major 10th rather than left uncapped or raised further: that's roughly the widest reach playable with one hand, so it stays realistic/useful to practice reading and judging on the staff, unlike arbitrarily large spans a pianist would never actually need to read as a single gesture. `INTERVAL_NAMES` gains the four compound-interval names needed for corrective feedback: 13 = minor 9th, 14 = major 9th, 15 = minor 10th, 16 = major 10th.
+
+No other logic changes: `INTERVAL_CANDIDATES`/`pickIntervalPair` already generalize over `MIN_INTERVAL_SEMITONES..MAX_INTERVAL_SEMITONES` (see v6), the two-note chord is still one `VF.StaveNote` on a single stave regardless of how far apart the noteheads land (VexFlow adds ledger lines automatically), and per-pair trouble-score weighting (v6) and same-letter collision avoidance (v5/v11) both key off the notes' actual letter+octave rather than assuming a within-octave span, so both already handle the wider range correctly.
+
+## Definition of done for v18
+- `pickIntervalPair` can return pairs up to 16 semitones apart (previously capped at 12), and never more.
+- `intervalNameFor` names every semitone distance from 1 (minor 2nd) through 16 (major 10th), including the four new compound intervals (minor/major 9th, minor/major 10th).
+- A wide interval (13–16 semitones) renders correctly as a two-note chord on the staff, respells/avoids same-letter collisions the same as any other interval, and is weighted/tracked in the trouble-score system the same as any other interval pair.
+- All v1–v17 definition-of-done items continue to hold.

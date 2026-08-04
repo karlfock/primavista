@@ -6,10 +6,6 @@ Items are numbered (`## N: Title`) purely so they can be referenced quickly ("im
 
 **Next number:** 14
 
-## 4: Interval mode: allow intervals bigger than an octave
-
-Interval mode currently caps at 12 semitones (`MAX_INTERVAL_SEMITONES` in `app.js`), i.e. an octave. Raise the cap to include intervals up to a major 10th (16 semitones = octave + major 3rd) — roughly the widest reach playable with one hand, and still useful/realistic to practice reading and judging on the staff, unlike arbitrarily large spans.
-
 ## 5: Two hands?
 Should then maybe be a rule that left hand is below middle c and right hand above? Overlapping ranges between the two hands would be fine (realistic — both hands can play the same register).
 

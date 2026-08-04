@@ -444,7 +444,7 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
     expect(sawAccidental).toBe(true);
   });
 
-  test('pickIntervalPair always returns two distinct in-range notes 1-12 semitones apart', async ({ page }) => {
+  test('pickIntervalPair always returns two distinct in-range notes 1-16 semitones apart', async ({ page }) => {
     await page.goto('/index.html');
     const allValid = await page.evaluate(() => {
       const api = window.__primavista;
@@ -457,6 +457,21 @@ test.describe('chromatic notes and interval mode (SPEC.md v5)', () => {
       return true;
     });
     expect(allValid).toBe(true);
+  });
+
+  test('interval mode is capped at a major 10th, not just an octave (BACKLOG.md #4)', async ({ page }) => {
+    await page.goto('/index.html');
+    const { maxCap, sawWiderThanOctave } = await page.evaluate(() => {
+      const api = window.__primavista;
+      let sawWider = false;
+      for (let i = 0; i < 1000 && !sawWider; i++) {
+        const [low, high] = api.pickIntervalPair();
+        if (high - low > 12) sawWider = true;
+      }
+      return { maxCap: api.MAX_INTERVAL_SEMITONES, sawWiderThanOctave: sawWider };
+    });
+    expect(maxCap).toBe(16);
+    expect(sawWiderThanOctave).toBe(true); // pairs beyond an octave actually get picked, not just theoretically allowed
   });
 
   test('checking "Interval mode" and starting a new session presents a two-note chord target', async ({ page }) => {
@@ -611,12 +626,12 @@ test.describe('chord note spelling avoids same-letter collisions (SPEC.md v5)', 
 });
 
 test.describe('interval type naming in corrective feedback (SPEC.md v8)', () => {
-  test('intervalNameFor names every semitone distance 1-12', async ({ page }) => {
+  test('intervalNameFor names every semitone distance 1-16 (BACKLOG.md #4)', async ({ page }) => {
     await page.goto('/index.html');
     const names = await page.evaluate(() => {
       const api = window.__primavista;
       const result = {};
-      for (let distance = 1; distance <= 12; distance++) {
+      for (let distance = 1; distance <= 16; distance++) {
         result[distance] = api.intervalNameFor([60, 60 + distance]);
       }
       return result;
@@ -625,6 +640,7 @@ test.describe('interval type naming in corrective feedback (SPEC.md v8)', () => 
       1: 'minor 2nd', 2: 'major 2nd', 3: 'minor 3rd', 4: 'major 3rd',
       5: 'perfect 4th', 6: 'tritone', 7: 'perfect 5th', 8: 'minor 6th',
       9: 'major 6th', 10: 'minor 7th', 11: 'major 7th', 12: 'octave',
+      13: 'minor 9th', 14: 'major 9th', 15: 'minor 10th', 16: 'major 10th',
     });
   });
 

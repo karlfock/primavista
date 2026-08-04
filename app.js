@@ -337,12 +337,16 @@ function pickRandomChromaticNote(exclude, scores = {}) {
 }
 
 // --- Intervals (see SPEC.md v5) ------------------------------------------
-// True chromatic interval qualities (m2 through P8 = 12 distinct semitone
+// True chromatic interval qualities (m2 through M10 = 16 distinct semitone
 // distances) need both notes to be able to land anywhere in the chromatic
 // range, not just on naturals — a diatonic-only interval can't guarantee
 // an exact quality (there's no natural note a minor third above C).
 const MIN_INTERVAL_SEMITONES = 1; // minor 2nd
-const MAX_INTERVAL_SEMITONES = 12; // octave
+// Capped at a major 10th (BACKLOG.md #4) rather than a plain octave —
+// roughly the widest reach playable with one hand, and still useful/
+// realistic to practice reading and judging on the staff, unlike
+// arbitrarily large spans that would never come up in real playing.
+const MAX_INTERVAL_SEMITONES = 16; // major 10th (octave + major 3rd)
 
 // Standard interval quality names by semitone distance (see BACKLOG.md:
 // "Name the interval type in corrective feedback"). Naming the interval
@@ -354,6 +358,7 @@ const INTERVAL_NAMES = {
   1: 'minor 2nd', 2: 'major 2nd', 3: 'minor 3rd', 4: 'major 3rd',
   5: 'perfect 4th', 6: 'tritone', 7: 'perfect 5th', 8: 'minor 6th',
   9: 'major 6th', 10: 'minor 7th', 11: 'major 7th', 12: 'octave',
+  13: 'minor 9th', 14: 'major 9th', 15: 'minor 10th', 16: 'major 10th',
 };
 
 function intervalNameFor(midis) {
