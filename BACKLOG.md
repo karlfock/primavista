@@ -4,7 +4,7 @@ Ideas for future features, not yet committed to or scheduled. Nothing here is de
 
 Items are numbered (`## N: Title`) purely so they can be referenced quickly ("implement 1 and 2"). Numbers come from **Next number** below and are never reused, even after an item ships and is removed — same as GitHub issue/PR numbers, so a number always points to the same idea and gaps in the sequence (after something ships) are expected, not a mistake. Bump **Next number** by one every time an item is added.
 
-**Next number:** 13
+**Next number:** 14
 
 ## 4: Interval mode: allow intervals bigger than an octave
 
@@ -17,3 +17,10 @@ TODO: refine
 ## 11: Show Swedish octave names
 In the error message where the user sees the correct tones, it is displayed as below:
 C4 - C5. It would be nice to also show the Swedish names of the octaves, even though it might get ugly UX wise, something to test out. 
+
+## 13: Cookies to save user settings
+Add cookie to save user settings below:
+- chromatic notes
+- interval mode
+- randomize key
+- "On the on-screen piano" info. Once closed, save in cookie so it doesn't show up again.
