@@ -16,7 +16,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v10 (shipped):** corrective feedback also gets a pause button, for reading it at your own pace instead of racing a countdown.
 - **v11 (shipped):** "Randomize key" mode — each attempt can be spelled and rendered against one of the 15 standard key signatures instead of always assuming C major/A minor.
 - **v12 (shipped):** the app displays its own version number in the footer.
-- **v13 (this update):** a correct interval-mode attempt briefly names the interval type; the corrective-feedback pause/close buttons are bigger, easier to tell apart on a touchscreen.
+- **v13 (shipped):** a correct interval-mode attempt briefly names the interval type; the corrective-feedback pause/close buttons are bigger, easier to tell apart on a touchscreen.
+- **v14 (this update):** the corrective-feedback (miss) alert moved from top-center to top-right, matching the correct-interval-name box, so it no longer covers the clef/notes on the staff (BACKLOG.md #12).
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -289,3 +290,12 @@ Two independent, small additions:
 - Starting a new session while the interval-name pause is pending does not later cause an extra, unrequested advance once the old delay would have elapsed.
 - The corrective-feedback pause/close buttons (and the interval-piano-hint close button, via the shared class) have a minimum ~32px touch target.
 - All v1–v12 definition-of-done items continue to hold.
+
+## Corrective-feedback alert repositioned (v14 change)
+
+The corrective-feedback (miss) alert was centered at the top of the staff panel (`left: 50%` / `transform: translateX(-50%)`), which sat directly over the clef and the note(s) it names since the staff SVG is itself horizontally centered in the panel — the exact bug shown in BACKLOG.md #12's screenshot. It now uses the same `top: 1rem; right: 1rem;` corner positioning as the correct-interval-name box (v13), which never had this problem. The two alerts are mutually exclusive (one shows on a miss, the other on a correct interval-mode attempt), so sharing the same corner never causes them to overlap each other.
+
+## Definition of done for v14
+- The corrective-feedback alert renders in the top-right corner of the staff panel, not centered over it.
+- The alert does not overlap the note glyph(s) rendered on the staff for a miss.
+- All v1–v13 definition-of-done items continue to hold.

@@ -199,6 +199,36 @@ test.describe('core loop (SPEC.md v3: single attempt, corrective feedback, re-qu
     await expect(page.locator('#stat-correct')).toHaveText('0');
   });
 
+  test('the incorrect-answer alert sits in the top-right corner, clear of the notes on the staff (BACKLOG.md #12)', async ({ page }) => {
+    await page.goto('/index.html');
+    await startNewSession(page);
+    const { wrongMidi } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const correct = api.session.current.midi;
+      const wrong = api.NOTE_RANGE.find((m) => m !== correct);
+      return { wrongMidi: wrong };
+    });
+
+    await page.evaluate((midi) => window.__primavista.onNoteOn(midi), wrongMidi);
+    await expect(page.locator('#corrective-feedback')).not.toHaveClass(/hidden/);
+
+    const [alertBox, panelBox, noteBoxes] = await Promise.all([
+      page.locator('#corrective-feedback').boundingBox(),
+      page.locator('#staff-panel').boundingBox(),
+      page.locator('#staff svg .vf-stavenote').evaluateAll((els) =>
+        els.map((el) => el.getBoundingClientRect()).map(({ x, y, width, height }) => ({ x, y, width, height }))
+      ),
+    ]);
+
+    // Right-aligned like the correct-interval-name box, not centered over the staff.
+    expect(panelBox.x + panelBox.width - (alertBox.x + alertBox.width)).toBeLessThan(30);
+    // Clear of the actual note glyph(s) rendered on the staff — the original bug.
+    expect(noteBoxes.length).toBeGreaterThan(0);
+    for (const note of noteBoxes) {
+      expect(alertBox.x).toBeGreaterThanOrEqual(note.x + note.width);
+    }
+  });
+
   test('a missed note is re-queued and excluded from first-try-correct when it comes back', async ({ page }) => {
     await page.goto('/index.html');
     await startNewSession(page);

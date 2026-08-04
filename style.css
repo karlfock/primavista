@@ -226,8 +226,7 @@ main {
 .corrective-feedback {
   position: absolute;
   top: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 1rem;
   background: var(--incorrect);
   color: #fff;
   font-weight: 600;

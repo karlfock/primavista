@@ -75,7 +75,7 @@ await page.waitForTimeout(300);
 await page.screenshot({ path: path.join(OUT_DIR, '04-randomize-key.png') });
 
 // The key-display label (top-left) and the corrective-feedback box
-// (top-center) are both absolutely positioned within .staff-panel — this
+// (top-right) are both absolutely positioned within .staff-panel — this
 // is the one screen where both are visible at once, worth eyeballing for
 // overlap since the Playwright suite checks DOM state, not actual layout.
 const wrongMidiWithKey = await page.evaluate(() => {
