@@ -106,15 +106,15 @@ function midiToDisplayName(midi, chordMidis) {
 // separate pitch computation. Covers the app's full pitch range
 // (MIN_MIDI_NOTE=21/A0 -> octave 0, PIANO_MAX_MIDI_NOTE=108/C8 -> octave 8).
 const SWEDISH_OCTAVE_NAMES = {
-  0: 'Subkontraoktaven',
-  1: 'Kontraoktaven',
-  2: 'Stora oktaven',
-  3: 'Lilla oktaven',
-  4: 'Ettstrukna oktaven',
-  5: 'Tvåstrukna oktaven',
-  6: 'Trestrukna oktaven',
-  7: 'Fyrstrukna oktaven',
-  8: 'Femstrukna oktaven',
+  0: 'Subkontraoktaven (0)',
+  1: 'Kontraoktaven (1)',
+  2: 'Stora oktaven (2)',
+  3: 'Lilla oktaven (3)',
+  4: 'Ettstrukna oktaven (4)',
+  5: 'Tvåstrukna oktaven (5)',
+  6: 'Trestrukna oktaven (6)',
+  7: 'Fyrstrukna oktaven (7)',
+  8: 'Femstrukna oktaven (8)',
 };
 
 function swedishOctaveName(octave) {

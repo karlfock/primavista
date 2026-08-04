@@ -18,7 +18,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v12 (shipped):** the app displays its own version number in the footer.
 - **v13 (shipped):** a correct interval-mode attempt briefly names the interval type; the corrective-feedback pause/close buttons are bigger, easier to tell apart on a touchscreen.
 - **v14 (shipped):** the corrective-feedback (miss) alert moved from top-center to top-right, matching the correct-interval-name box, so it no longer covers the clef/notes on the staff (BACKLOG.md #12).
-- **v15 (this update):** every note/interval shown on the staff is now also labeled with its Swedish octave name(s), discreetly in the bottom-left corner of the staff panel (BACKLOG.md #11).
+- **v15 (shipped):** every note/interval shown on the staff is now also labeled with its Swedish octave name(s), discreetly in the bottom-left corner of the staff panel (BACKLOG.md #11).
+- **v16 (this update):** each Swedish octave name is now suffixed with its standard scientific-pitch octave number, e.g. "Ettstrukna oktaven (4)".
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -314,3 +315,11 @@ This supersedes the original idea in BACKLOG.md #11 (showing Swedish names only 
 - A two-note target shows `<lower> / <higher>`; the same Swedish octave for both notes collapses to one name.
 - With "Randomize key" on, the octave name matches the spelling actually notated on the staff, not a raw midi-based computation that could disagree with it at an enharmonic edge.
 - All v1–v14 definition-of-done items continue to hold.
+
+## Standard octave number in the Swedish octave label (v16 change)
+
+Each entry in `SWEDISH_OCTAVE_NAMES` (`app.js`) now carries its standard scientific-pitch-notation octave number in parentheses, e.g. `'Ettstrukna oktaven (4)'` rather than `'Ettstrukna oktaven'`. The number is the same octave index already used as the table's key (`Math.floor(midi / 12) - 1`, middle C = octave 4), just made visible alongside the Swedish name instead of only being an internal lookup key. `swedishOctaveName` and `swedishOctaveLabel` are otherwise unchanged — the number rides along automatically since it's baked into the table's string values, including in the `<lower> / <higher>` interval-mode format (e.g. `'Lilla oktaven (3) / Tvåstrukna oktaven (5)'`).
+
+## Definition of done for v16
+- Every Swedish octave name shown anywhere in the app (single-note or interval-mode, both members of `SWEDISH_OCTAVE_NAMES`) includes its standard octave number in parentheses.
+- All v1–v15 definition-of-done items continue to hold.

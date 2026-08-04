@@ -1119,9 +1119,9 @@ test.describe('Swedish octave names (BACKLOG.md #11)', () => {
         outOfRange: api.swedishOctaveName(99),
       };
     });
-    expect(names.middleC).toBe('Ettstrukna oktaven');
-    expect(names.lowest).toBe('Subkontraoktaven');
-    expect(names.highest).toBe('Femstrukna oktaven');
+    expect(names.middleC).toBe('Ettstrukna oktaven (4)');
+    expect(names.lowest).toBe('Subkontraoktaven (0)');
+    expect(names.highest).toBe('Femstrukna oktaven (8)');
     expect(names.outOfRange).not.toBe(''); // never blank, even for an octave with no table entry
   });
 
@@ -1136,10 +1136,10 @@ test.describe('Swedish octave names (BACKLOG.md #11)', () => {
         sameOctave: api.swedishOctaveLabel([4, 4]),
       };
     });
-    expect(labels.single).toBe('Ettstrukna oktaven');
-    expect(labels.lowHigh).toBe('Lilla oktaven / Tvåstrukna oktaven');
-    expect(labels.highLow).toBe('Lilla oktaven / Tvåstrukna oktaven');
-    expect(labels.sameOctave).toBe('Ettstrukna oktaven'); // no "X / X" repetition
+    expect(labels.single).toBe('Ettstrukna oktaven (4)');
+    expect(labels.lowHigh).toBe('Lilla oktaven (3) / Tvåstrukna oktaven (5)');
+    expect(labels.highLow).toBe('Lilla oktaven (3) / Tvåstrukna oktaven (5)');
+    expect(labels.sameOctave).toBe('Ettstrukna oktaven (4)'); // no "X / X" repetition
   });
 
   test('is hidden in the idle state, before any note has been shown', async ({ page }) => {
