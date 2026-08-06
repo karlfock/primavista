@@ -21,7 +21,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v15 (shipped):** every note/interval shown on the staff is now also labeled with its Swedish octave name(s), discreetly in the bottom-left corner of the staff panel (BACKLOG.md #11).
 - **v16 (shipped):** each Swedish octave name is now suffixed with its standard scientific-pitch octave number, e.g. "Ettstrukna oktaven (4)".
 - **v17 (shipped):** the three practice-option checkboxes (chromatic notes, interval mode, randomize key) and the interval-piano-hint dismissal now persist across reloads/visits (BACKLOG.md #13).
-- **v18 (this update):** interval mode's maximum interval widened from an octave (12 semitones) to a major 10th (16 semitones) (BACKLOG.md #4).
+- **v18 (shipped):** interval mode's maximum interval widened from an octave (12 semitones) to a major 10th (16 semitones) (BACKLOG.md #4).
+- **v19 (this update):** the trouble-score reward for a correct answer is halved again (0.5 → 0.25), so it now takes four correct answers to fully offset one miss, not two — more repetition on genuinely hard items.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -161,10 +162,10 @@ This extends to the very first session too: the app now loads into an **idle sta
 Every note and every interval pair has a **trouble score** persisted in `localStorage` (key `primavista:troubleScores`), starting implicitly at 0:
 
 - A miss: `+1` (`MISS_TROUBLE_DELTA`).
-- A correct answer: `-0.5` (`CORRECT_TROUBLE_DELTA`), floored at 0. Once a score returns to 0 or below, its entry is deleted from storage entirely rather than kept as an explicit zero — cleanup, and also means "mastered" items are indistinguishable from items never seen, which is the intent.
+- A correct answer: `-0.5` (`CORRECT_TROUBLE_DELTA`) **— superseded in v19, now `-0.25`, see below**, floored at 0. Once a score returns to 0 or below, its entry is deleted from storage entirely rather than kept as an explicit zero — cleanup, and also means "mastered" items are indistinguishable from items never seen, which is the intent.
 - Selection weight for a candidate is `1 + troubleScore`, so something missed 3 times is 4x as likely to be picked as something never missed. With no scores at all (a fresh browser, or everything at baseline), every candidate has weight 1 and selection is uniform — identical to pre-v6 behavior.
 
-**The reward is deliberately smaller than the penalty (2 corrects to offset 1 miss), not symmetric.** A session never ends until every note has been re-queued until answered correctly (v3), so a single miss is *guaranteed* an eventual same-session correct answer. With a symmetric ±1, that guaranteed redemption would guarantee a net-zero score by the time a session ends — confirmed in real use, where two full sessions left almost nothing in `localStorage`. The asymmetry means genuinely hard items keep some elevated weight past their first same-session retry, carrying real signal into future sessions instead of the app's own re-queue mechanic silently erasing it.
+**The reward is deliberately smaller than the penalty (2 corrects to offset 1 miss — superseded in v19, now 4), not symmetric.** A session never ends until every note has been re-queued until answered correctly (v3), so a single miss is *guaranteed* an eventual same-session correct answer. With a symmetric ±1, that guaranteed redemption would guarantee a net-zero score by the time a session ends — confirmed in real use, where two full sessions left almost nothing in `localStorage`. The asymmetry means genuinely hard items keep some elevated weight past their first same-session retry, carrying real signal into future sessions instead of the app's own re-queue mechanic silently erasing it.
 
 **No time-based decay.** A score only goes down by answering that item correctly again — never automatically over calendar time. This was a deliberate simplification: it needs no timestamps, and "you stopped seeing it as often because you got better at it" is a more meaningful trigger than "you stopped seeing it because enough days passed."
 
@@ -177,7 +178,7 @@ Every note and every interval pair has a **trouble score** persisted in `localSt
 ## Definition of done for v6
 - A note or interval pair missed more often is proportionally more likely to be selected in future sessions, including sessions started after a page reload (scores persist in `localStorage`).
 - A trouble score returns toward baseline (and is deleted once at 0) as the user answers that item correctly again — never through the mere passage of time.
-- A single miss followed by a single correct answer (the guaranteed same-session re-queue redemption) does not fully clear a trouble score — it takes a second correct answer to fully offset one miss.
+- A single miss followed by a single correct answer (the guaranteed same-session re-queue redemption) does not fully clear a trouble score — it takes a second correct answer to fully offset one miss (**superseded in v19** — now a fourth).
 - Interval trouble scores are tracked per exact pair, not per interval type, so interval *type* remains as unpredictable as in v5.
 - With no browsing history (or a `localStorage` read/write failure), selection is unweighted/uniform, identical to v5 behavior.
 - All v1–v5 definition-of-done items continue to hold.
@@ -351,3 +352,12 @@ No other logic changes: `INTERVAL_CANDIDATES`/`pickIntervalPair` already general
 - `intervalNameFor` names every semitone distance from 1 (minor 2nd) through 16 (major 10th), including the four new compound intervals (minor/major 9th, minor/major 10th).
 - A wide interval (13–16 semitones) renders correctly as a two-note chord on the staff, respells/avoids same-letter collisions the same as any other interval, and is weighted/tracked in the trouble-score system the same as any other interval pair.
 - All v1–v17 definition-of-done items continue to hold.
+
+## Trouble-score reward tightened again (v19 change)
+
+`CORRECT_TROUBLE_DELTA` goes from `0.5` to `0.25` — requested directly, to get more repetition out of the weighted-selection system (v6). The mechanic itself is unchanged (miss `+1`, correct `-CORRECT_TROUBLE_DELTA`, floored at 0, deleted once at 0); only the number moves, in the same direction as the original v6→(post-v6 bugfix) change from a symmetric `-1` down to `-0.5` — halving it again means a genuinely hard item now needs **four** clean correct answers to fully clear, not two, so it keeps showing up (both within later sessions and via "Drill my weak spots") for noticeably longer after the first sign of trouble.
+
+## Definition of done for v19
+- `CORRECT_TROUBLE_DELTA` is `0.25`; `MISS_TROUBLE_DELTA` is unchanged at `1`.
+- A single trouble-score entry requires four correct answers (not two) to return to 0 and be deleted from `localStorage`.
+- All v1–v18 definition-of-done items continue to hold.

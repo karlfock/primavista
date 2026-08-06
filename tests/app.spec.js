@@ -1340,11 +1340,15 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
       api.recordAttemptOutcome([60], true);
       steps.push(api.loadTroubleScores()['n:60']);
       api.recordAttemptOutcome([60], true);
-      steps.push('n:60' in api.loadTroubleScores()); // fully cleared only after enough corrects
+      steps.push(api.loadTroubleScores()['n:60']);
+      api.recordAttemptOutcome([60], true);
+      steps.push(api.loadTroubleScores()['n:60']);
+      api.recordAttemptOutcome([60], true);
+      steps.push('n:60' in api.loadTroubleScores()); // fully cleared only after enough corrects (4, at 0.25 each)
       return { steps, deltas: { miss: api.MISS_TROUBLE_DELTA, correct: api.CORRECT_TROUBLE_DELTA } };
     });
-    expect(deltas).toEqual({ miss: 1, correct: 0.5 });
-    expect(steps).toEqual([1, 0.5, false]);
+    expect(deltas).toEqual({ miss: 1, correct: 0.25 });
+    expect(steps).toEqual([1, 0.75, 0.5, 0.25, false]);
   });
 
   // This is the specific bug found in real use: the app's own re-queue

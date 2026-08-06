@@ -392,7 +392,7 @@ function pickIntervalPair(scores = {}) {
 
 // --- Weighted note selection (see SPEC.md v6) -----------------------------
 // A per-item "trouble score" persisted in localStorage: +1 on a miss,
-// -0.5 (floored at 0) on a correct answer. Selection weight is 1 + score,
+// -0.25 (floored at 0) on a correct answer. Selection weight is 1 + score,
 // so an item you've missed 3 times is 4x as likely to come up as one
 // you've never missed. Once enough correct answers bring a score back to
 // 0, the entry is deleted entirely — it doesn't need a special "forget"
@@ -406,10 +406,12 @@ function pickIntervalPair(scores = {}) {
 // session even ends, and near-nothing would carry over to influence
 // future sessions — this was confirmed in real use: after two full
 // sessions, localStorage held almost no trouble scores at all. Requiring
-// two corrects to fully offset one miss means genuinely hard items keep
-// some elevated weight past their first same-session retry.
+// four corrects to fully offset one miss (tightened from two — see
+// SPEC.md's changelog) means genuinely hard items keep elevated weight
+// for noticeably longer, surfacing more often across future sessions
+// instead of fading out after just one or two clean repeats.
 const MISS_TROUBLE_DELTA = 1;
-const CORRECT_TROUBLE_DELTA = 0.5;
+const CORRECT_TROUBLE_DELTA = 0.25;
 //
 // Interval items are keyed by the *exact pair* (e.g. "i:65-66"), not by
 // interval type (e.g. "minor 2nd") — weighting by type would bias toward
