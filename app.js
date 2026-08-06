@@ -328,12 +328,12 @@ const CHROMATIC_RANGE = buildChromaticRange(MIN_MIDI_NOTE, MAX_MIDI_NOTE);
 
 function pickRandomNote(exclude, scores = {}) {
   const candidates = NOTE_RANGE.filter((m) => m !== exclude);
-  return pickWeighted(candidates, (m) => 1 + (scores[troubleKeyForNote(m)] || 0));
+  return pickWeighted(candidates, (m) => 1 + troubleWeight(scores, troubleKeyForNote(m)));
 }
 
 function pickRandomChromaticNote(exclude, scores = {}) {
   const candidates = CHROMATIC_RANGE.filter((m) => m !== exclude);
-  return pickWeighted(candidates, (m) => 1 + (scores[troubleKeyForNote(m)] || 0));
+  return pickWeighted(candidates, (m) => 1 + troubleWeight(scores, troubleKeyForNote(m)));
 }
 
 // --- Intervals (see SPEC.md v5) ------------------------------------------
@@ -387,7 +387,7 @@ function buildIntervalCandidates() {
 const INTERVAL_CANDIDATES = buildIntervalCandidates();
 
 function pickIntervalPair(scores = {}) {
-  return pickWeighted(INTERVAL_CANDIDATES, (pair) => 1 + (scores[troubleKeyForInterval(pair)] || 0));
+  return pickWeighted(INTERVAL_CANDIDATES, (pair) => 1 + troubleWeight(scores, troubleKeyForInterval(pair)));
 }
 
 // --- Weighted note selection (see SPEC.md v6) -----------------------------
@@ -439,10 +439,21 @@ function troubleKeyFor(midis) {
 // localStorage can throw (private browsing, quota, disabled) — weighting
 // is a nice-to-have, so failures here just fall back to empty/uniform
 // weighting rather than breaking the app.
+//
+// Each entry is { score, lastMissAt }. Older stored data (before
+// per-item cooldown timestamps existed) has a plain number instead —
+// normalized here into the current shape with lastMissAt: null ("no
+// known miss time" = not on cooldown), so existing data doesn't suddenly
+// become inaccessible after this change.
 function loadTroubleScores() {
   try {
     const raw = localStorage.getItem(TROUBLE_SCORE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const parsed = raw ? JSON.parse(raw) : {};
+    const normalized = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      normalized[key] = typeof value === 'number' ? { score: value, lastMissAt: null } : value;
+    }
+    return normalized;
   } catch (err) {
     return {};
   }
@@ -456,20 +467,53 @@ function saveTroubleScores(scores) {
   }
 }
 
+// A missed item can't be weighted toward again until the next calendar
+// day (local time) — long enough for genuine spacing rather than an
+// instant same-session redo, per spaced-repetition research on delayed
+// re-testing beating immediate re-testing for long-term retention. This
+// only affects *selection* weighting/candidacy (see troubleWeight,
+// buildDrillQueue below) — the existing same-session re-queue-until-
+// correct loop (SPEC.md v3) is completely untouched, since that's about
+// confirming the correction just given, not long-term retention.
+function isOnCooldown(entry, now = Date.now()) {
+  if (!entry || !entry.lastMissAt) return false;
+  return new Date(entry.lastMissAt).toDateString() === new Date(now).toDateString();
+}
+
+// The weight a candidate contributes on top of the baseline 1 (see
+// pickWeighted below) — 0 both for an item with no history and for one
+// that's on cooldown, so a recent miss stops boosting selection odds
+// until tomorrow without erasing the underlying score itself.
+function troubleWeight(scores, key) {
+  const entry = scores[key];
+  if (!entry || isOnCooldown(entry)) return 0;
+  return entry.score;
+}
+
+function hasAnyEligibleWeakSpot(scores) {
+  return Object.values(scores).some((entry) => !isOnCooldown(entry));
+}
+
 function recordAttemptOutcome(midis, wasCorrect) {
   const scores = loadTroubleScores();
   const key = troubleKeyFor(midis);
-  const current = scores[key] || 0;
-  const next = wasCorrect
-    ? Math.max(0, current - CORRECT_TROUBLE_DELTA)
-    : current + MISS_TROUBLE_DELTA;
-  if (next <= 0) {
+  const current = scores[key] || { score: 0, lastMissAt: null };
+  const nextScore = wasCorrect
+    ? Math.max(0, current.score - CORRECT_TROUBLE_DELTA)
+    : current.score + MISS_TROUBLE_DELTA;
+  if (nextScore <= 0) {
     delete scores[key];
   } else {
-    scores[key] = next;
+    scores[key] = {
+      score: nextScore,
+      // A correct answer doesn't reset the cooldown clock — it isn't a
+      // new miss, so an existing cooldown still counts down from the
+      // original miss regardless of any correct answers in between.
+      lastMissAt: wasCorrect ? current.lastMissAt : Date.now(),
+    };
   }
   saveTroubleScores(scores);
-  setDrillButtonAvailability(Object.keys(scores).length > 0);
+  setDrillButtonAvailability(scores);
 }
 
 // Weighted random pick: each candidate's weight is 1 + its trouble score,
@@ -546,10 +590,15 @@ function parseTroubleKey(key) {
 // Takes the current highest-scoring items, capped at the same length as a
 // normal session — drill sessions are meant to be short, and with few
 // weak spots recorded that's already true without needing a separate,
-// smaller limit of its own.
+// smaller limit of its own. Excludes anything on cooldown entirely
+// (see isOnCooldown) — unlike a normal session, where a cooldown just
+// stops an item being over-weighted, a drill session's whole premise is
+// "made entirely from weak spots," so an item you can't be re-weighted
+// toward until tomorrow shouldn't be force-fed back to you today either.
 function buildDrillQueue(scores) {
   const midisList = Object.entries(scores)
-    .sort(([, a], [, b]) => b - a)
+    .filter(([, entry]) => !isOnCooldown(entry))
+    .sort(([, a], [, b]) => b.score - a.score)
     .slice(0, SESSION_LENGTH)
     .map(([key]) => parseTroubleKey(key));
 
@@ -844,10 +893,11 @@ function startSession(mode = 'normal') {
         chromaticMode: practiceOptions.chromatic,
         randomizeKeyMode: practiceOptions.randomizeKey,
       });
-  // Drill mode with no recorded trouble scores has nothing to queue. The
-  // button that triggers this is disabled in that case (see
-  // setDrillButtonAvailability), but guard here too rather than starting
-  // a zero-length session if it's ever invoked another way.
+  // Drill mode with no recorded trouble scores (or everything currently
+  // on cooldown — see isOnCooldown) has nothing to queue. The button that
+  // triggers this is disabled in that case (see setDrillButtonAvailability),
+  // but guard here too rather than starting a zero-length session if it's
+  // ever invoked another way.
   if (queue.length === 0) return;
 
   // Starting a session while a previous miss's corrective feedback is
@@ -1230,14 +1280,21 @@ function updateChromaticCheckboxState() {
     : '';
 }
 
-// Disabled until at least one trouble score exists (see "Drill my weak
-// spots" above) — there's nothing to build a drill queue from otherwise.
-// Called on boot and after every recordAttemptOutcome, so it stays in
-// sync with scores changing during live play, not just at session start.
-function setDrillButtonAvailability(hasWeakSpots) {
+// Disabled until at least one trouble score exists AND isn't on cooldown
+// (see "Drill my weak spots" above and isOnCooldown) — there's nothing
+// eligible to build a drill queue from otherwise. Called on boot and
+// after every recordAttemptOutcome, so it stays in sync with scores
+// changing during live play, not just at session start.
+function setDrillButtonAvailability(scores) {
   const btn = document.getElementById('drill-weak-spots-btn');
-  btn.disabled = !hasWeakSpots;
-  btn.title = hasWeakSpots ? '' : 'No trouble spots recorded yet — play a session first';
+  const total = Object.keys(scores).length;
+  const eligible = hasAnyEligibleWeakSpot(scores);
+  btn.disabled = !eligible;
+  btn.title = eligible
+    ? ''
+    : total > 0
+      ? 'Your recorded trouble spots are all cooling down until tomorrow'
+      : 'No trouble spots recorded yet — play a session first';
 }
 
 // The virtual piano is a single pointer/finger — it can only tap one key
@@ -1293,7 +1350,7 @@ function initPracticeOptions() {
   document.getElementById('corrective-feedback-close').addEventListener('click', dismissCorrectiveFeedback);
   document.getElementById('start-session-btn').addEventListener('click', () => startSession('normal'));
   document.getElementById('drill-weak-spots-btn').addEventListener('click', () => startSession('drill'));
-  setDrillButtonAvailability(Object.keys(loadTroubleScores()).length > 0);
+  setDrillButtonAvailability(loadTroubleScores());
 }
 
 // --- Boot ---------------------------------------------------------
@@ -1368,4 +1425,8 @@ window.__primavista = {
   SETTINGS_STORAGE_KEY,
   loadSettings,
   saveSettings,
+  isOnCooldown,
+  troubleWeight,
+  hasAnyEligibleWeakSpot,
+  saveTroubleScores,
 };

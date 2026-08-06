@@ -22,7 +22,8 @@ A minimal web app that trains note-reading speed by rendering one random note on
 - **v16 (shipped):** each Swedish octave name is now suffixed with its standard scientific-pitch octave number, e.g. "Ettstrukna oktaven (4)".
 - **v17 (shipped):** the three practice-option checkboxes (chromatic notes, interval mode, randomize key) and the interval-piano-hint dismissal now persist across reloads/visits (BACKLOG.md #13).
 - **v18 (shipped):** interval mode's maximum interval widened from an octave (12 semitones) to a major 10th (16 semitones) (BACKLOG.md #4).
-- **v19 (this update):** the trouble-score reward for a correct answer is halved again (0.5 → 0.25), so it now takes four correct answers to fully offset one miss, not two — more repetition on genuinely hard items.
+- **v19 (shipped):** the trouble-score reward for a correct answer is halved again (0.5 → 0.25), so it now takes four correct answers to fully offset one miss, not two — more repetition on genuinely hard items.
+- **v20 (this update):** a missed item can't be weighted toward again until the next calendar day — a spaced-repetition cooldown on top of the existing trouble-score system, for stronger long-term recall.
 ## Core loop (v3 change)
 1. App generates a random pitch within the configured range.
 2. App renders that single note on a grand staff, selecting a clef per the rules below.
@@ -361,3 +362,22 @@ No other logic changes: `INTERVAL_CANDIDATES`/`pickIntervalPair` already general
 - `CORRECT_TROUBLE_DELTA` is `0.25`; `MISS_TROUBLE_DELTA` is unchanged at `1`.
 - A single trouble-score entry requires four correct answers (not two) to return to 0 and be deleted from `localStorage`.
 - All v1–v18 definition-of-done items continue to hold.
+
+## Spaced-repetition cooldown on missed items (v20 change)
+
+Requested directly, based on the spacing effect from memory research: re-testing an item immediately after a miss is weaker for long-term retention than spacing the re-test out. A missed note/interval can no longer be *weighted toward* again until the next calendar day (local time) — separate from, and layered on top of, the existing trouble-score system (v6/v19).
+
+- **Each trouble-score entry gains a `lastMissAt` timestamp**, stored alongside `score` (now `{ score, lastMissAt }` instead of a bare number). Set to the moment of a miss; a subsequent *correct* answer for that item leaves it unchanged — a correct answer isn't a new miss, so it doesn't push the cooldown clock forward, and the existing cooldown (if any) keeps counting down from the original miss regardless of any correct answers in between.
+- **`isOnCooldown(entry)`** is true exactly when `lastMissAt` falls on the same calendar day (local time, via `Date#toDateString()`) as now. No entry, or an entry with no `lastMissAt`, is never on cooldown.
+- **Only *selection* is affected — the same-session re-queue-until-correct loop (v3) is completely untouched.** A missed note/interval still reappears later in the *same* session and must be answered correctly before that session ends, exactly as before; the cooldown only governs whether it gets extra weight in *future* selection.
+- **Normal (weighted) sessions:** `troubleWeight(scores, key)` returns `0` for an on-cooldown entry regardless of its accumulated score, falling back to the same baseline-1 weight as an item with no history at all — it can still come up by ordinary uniform chance, just without the trouble-score boost, until the cooldown clears.
+- **"Drill my weak spots" (v7) goes further: cooldown items are excluded from the candidate list entirely**, not just de-weighted. Drill mode's whole premise is "made entirely from current weak spots," so force-feeding back something you just got wrong today would defeat the point of spacing it out. `setDrillButtonAvailability` disables the button both when there are no recorded trouble scores at all and when every recorded one is currently on cooldown, with distinct tooltip text ("No trouble spots recorded yet" vs. "Your recorded trouble spots are all cooling down until tomorrow") so the two states aren't confused.
+- **Backward compatible with existing data:** a trouble score stored before this change is a bare number, not `{ score, lastMissAt }`. `loadTroubleScores()` normalizes any bare-number entry into `{ score: <the number>, lastMissAt: null }` on load — "no known miss time" defaults to *not* on cooldown, so existing users' saved progress doesn't suddenly become inaccessible after this update.
+
+## Definition of done for v20
+- A miss sets that item's `lastMissAt` to the moment of the miss; a subsequent correct answer for the same item leaves `lastMissAt` unchanged.
+- An item missed earlier the same calendar day contributes no extra weight to normal session selection (falls back to the uniform baseline) and is excluded entirely from "Drill my weak spots" candidates; once the calendar day changes, it's fully eligible again, exactly as in v6/v19.
+- The same-session re-queue-until-correct loop is unaffected: a missed note/interval still reappears later in the session it was missed in and must be answered correctly before that session ends, regardless of cooldown.
+- Trouble-score data saved before this change (a bare number per item) loads correctly and is treated as not on cooldown, rather than becoming inaccessible or crashing.
+- The "Drill my weak spots" button is disabled, with distinct tooltip text, both when there are no recorded trouble scores and when every recorded one is currently on cooldown.
+- All v1–v19 definition-of-done items continue to hold.

@@ -10,6 +10,32 @@ async function startNewSession(page) {
   await page.locator('#start-session-btn').click();
 }
 
+// Records a miss for each item in `midisList` (each a midi array — [60]
+// for a single note, [65, 66] for an interval) the normal way, then
+// backdates its lastMissAt so it's past the next-day cooldown (see
+// app.js isOnCooldown) instead of on cooldown from today. Reloads the
+// page afterward so the DOM (e.g. the "Drill my weak spots" button)
+// reflects the change, the same way a real user returning tomorrow would
+// see it after a reload — buildQueue/buildDrillQueue/setDrillButtonAvailability
+// are only re-evaluated on session-start or boot, not live on localStorage writes.
+async function recordMissesOnEarlierDay(page, midisList, daysAgo = 1) {
+  await page.evaluate(({ midisList, daysAgo }) => {
+    const api = window.__primavista;
+    for (const midis of midisList) {
+      api.recordAttemptOutcome(midis, false);
+    }
+    const earlier = new Date();
+    earlier.setDate(earlier.getDate() - daysAgo);
+    const scores = api.loadTroubleScores();
+    for (const midis of midisList) {
+      const key = midis.length === 1 ? api.troubleKeyForNote(midis[0]) : api.troubleKeyForInterval(midis);
+      scores[key].lastMissAt = earlier.getTime();
+    }
+    api.saveTroubleScores(scores);
+  }, { midisList, daysAgo });
+  await page.reload();
+}
+
 test.describe('idle state before a session starts', () => {
   test('shows the idle panel with no active session on load', async ({ page }) => {
     await page.goto('/index.html');
@@ -1336,13 +1362,13 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
       const api = window.__primavista;
       const steps = [];
       api.recordAttemptOutcome([60], false);
-      steps.push(api.loadTroubleScores()['n:60']);
+      steps.push(api.loadTroubleScores()['n:60'].score);
       api.recordAttemptOutcome([60], true);
-      steps.push(api.loadTroubleScores()['n:60']);
+      steps.push(api.loadTroubleScores()['n:60'].score);
       api.recordAttemptOutcome([60], true);
-      steps.push(api.loadTroubleScores()['n:60']);
+      steps.push(api.loadTroubleScores()['n:60'].score);
       api.recordAttemptOutcome([60], true);
-      steps.push(api.loadTroubleScores()['n:60']);
+      steps.push(api.loadTroubleScores()['n:60'].score);
       api.recordAttemptOutcome([60], true);
       steps.push('n:60' in api.loadTroubleScores()); // fully cleared only after enough corrects (4, at 0.25 each)
       return { steps, deltas: { miss: api.MISS_TROUBLE_DELTA, correct: api.CORRECT_TROUBLE_DELTA } };
@@ -1365,7 +1391,7 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
       const api = window.__primavista;
       api.recordAttemptOutcome([60], false); // the miss
       api.recordAttemptOutcome([60], true); // the guaranteed same-session redemption
-      return api.loadTroubleScores()['n:60'];
+      return api.loadTroubleScores()['n:60'].score;
     });
     expect(scoreAfterMissThenCorrect).toBeGreaterThan(0);
   });
@@ -1386,7 +1412,8 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
       const api = window.__primavista;
       api.recordAttemptOutcome([65], false); // single F4
       api.recordAttemptOutcome([65, 66], false); // F4+F#4 interval
-      return api.loadTroubleScores();
+      const stored = api.loadTroubleScores();
+      return { 'n:65': stored['n:65'].score, 'i:65-66': stored['i:65-66'].score };
     });
     expect(scores).toEqual({ 'n:65': 1, 'i:65-66': 1 });
   });
@@ -1395,7 +1422,7 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
     await page.goto('/index.html');
     const counts = await page.evaluate(() => {
       const api = window.__primavista;
-      const scores = { [api.troubleKeyForNote(60)]: 500 }; // C4 heavily favored
+      const scores = { [api.troubleKeyForNote(60)]: { score: 500, lastMissAt: null } }; // C4 heavily favored
       const tally = {};
       for (let i = 0; i < 300; i++) {
         const note = api.pickRandomNote(null, scores);
@@ -1416,7 +1443,7 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
       // The candidate pool is in the hundreds of pairs (much bigger than the
       // ~45-note single-note pool), so the score needs to be large relative
       // to that pool size to make the boosted pair dominate a sample.
-      const scores = { [api.troubleKeyForInterval([65, 66])]: 5000 };
+      const scores = { [api.troubleKeyForInterval([65, 66])]: { score: 5000, lastMissAt: null } };
       const tally = {};
       for (let i = 0; i < 300; i++) {
         const [low, high] = api.pickIntervalPair(scores);
@@ -1451,7 +1478,7 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
 
     await page.evaluate(() => window.__primavista.onNoteOn(21)); // wrong note
 
-    const score = await page.evaluate(() => window.__primavista.loadTroubleScores()['n:60']);
+    const score = await page.evaluate(() => window.__primavista.loadTroubleScores()['n:60'].score);
     expect(score).toBe(1);
   });
 
@@ -1475,7 +1502,7 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
 
     await page.locator('#start-session-btn').click();
 
-    const score = await page.evaluate(() => window.__primavista.loadTroubleScores()['n:60']);
+    const score = await page.evaluate(() => window.__primavista.loadTroubleScores()['n:60'].score);
     expect(score).toBe(1); // still there after a fresh buildQueue() read it
   });
 
@@ -1500,23 +1527,183 @@ test.describe('weighted note selection based on historical misses (SPEC.md v6)',
   });
 });
 
+test.describe('spaced-repetition cooldown on missed items (SPEC.md v20)', () => {
+  test('isOnCooldown: no entry, no lastMissAt, or a miss from an earlier day are all not on cooldown', async ({ page }) => {
+    await page.goto('/index.html');
+    const results = await page.evaluate(() => {
+      const api = window.__primavista;
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return {
+        noEntry: api.isOnCooldown(undefined),
+        neverMissed: api.isOnCooldown({ score: 1, lastMissAt: null }),
+        missedYesterday: api.isOnCooldown({ score: 1, lastMissAt: yesterday.getTime() }),
+        missedToday: api.isOnCooldown({ score: 1, lastMissAt: Date.now() }),
+      };
+    });
+    expect(results.noEntry).toBe(false);
+    expect(results.neverMissed).toBe(false);
+    expect(results.missedYesterday).toBe(false);
+    expect(results.missedToday).toBe(true);
+  });
+
+  test('a miss sets lastMissAt to now; a subsequent correct answer does not reset it', async ({ page }) => {
+    await page.goto('/index.html');
+    const { afterMiss, afterCorrect } = await page.evaluate(() => {
+      const api = window.__primavista;
+      const before = Date.now();
+      api.recordAttemptOutcome([60], false);
+      const afterMiss = api.loadTroubleScores()['n:60'].lastMissAt;
+      // A later correct answer (e.g. the guaranteed same-session
+      // re-queue redemption) must not push the cooldown clock forward —
+      // it isn't a new miss.
+      api.recordAttemptOutcome([60], true);
+      const afterCorrect = api.loadTroubleScores()['n:60'].lastMissAt;
+      return { afterMiss, afterCorrect, before };
+    });
+    expect(afterMiss).toBeGreaterThanOrEqual(0);
+    expect(afterCorrect).toBe(afterMiss); // unchanged by the correct answer
+  });
+
+  test('troubleWeight is 0 for an on-cooldown item regardless of score, and the real score otherwise', async ({ page }) => {
+    await page.goto('/index.html');
+    const weights = await page.evaluate(() => {
+      const api = window.__primavista;
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const scores = {
+        cooldown: { score: 500, lastMissAt: Date.now() },
+        eligible: { score: 500, lastMissAt: yesterday.getTime() },
+      };
+      return {
+        cooldown: api.troubleWeight(scores, 'cooldown'),
+        eligible: api.troubleWeight(scores, 'eligible'),
+      };
+    });
+    expect(weights.cooldown).toBe(0);
+    expect(weights.eligible).toBe(500);
+  });
+
+  test('pickRandomNote does not over-select a note whose only high score is on cooldown', async ({ page }) => {
+    await page.goto('/index.html');
+    const counts = await page.evaluate(() => {
+      const api = window.__primavista;
+      const scores = { [api.troubleKeyForNote(60)]: { score: 500, lastMissAt: Date.now() } }; // missed today
+      const tally = {};
+      for (let i = 0; i < 300; i++) {
+        const note = api.pickRandomNote(null, scores);
+        tally[note] = (tally[note] || 0) + 1;
+      }
+      return tally;
+    });
+    // Uniform across ~45 naturals — nowhere near the ~92% share a live
+    // (non-cooldown) weight of 500 would produce (see the v6 test above).
+    expect(counts[60]).toBeLessThan(60);
+  });
+
+  test('hasAnyEligibleWeakSpot is false when every entry is on cooldown, true if at least one is not', async ({ page }) => {
+    await page.goto('/index.html');
+    const results = await page.evaluate(() => {
+      const api = window.__primavista;
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return {
+        allOnCooldown: api.hasAnyEligibleWeakSpot({ a: { score: 1, lastMissAt: Date.now() } }),
+        oneEligible: api.hasAnyEligibleWeakSpot({
+          a: { score: 1, lastMissAt: Date.now() },
+          b: { score: 1, lastMissAt: yesterday.getTime() },
+        }),
+        empty: api.hasAnyEligibleWeakSpot({}),
+      };
+    });
+    expect(results.allOnCooldown).toBe(false);
+    expect(results.oneEligible).toBe(true);
+    expect(results.empty).toBe(false);
+  });
+
+  test('legacy plain-number trouble scores (pre-cooldown data) are normalized to {score, lastMissAt: null} and are not on cooldown', async ({ page }) => {
+    await page.goto('/index.html');
+    const result = await page.evaluate(() => {
+      const api = window.__primavista;
+      localStorage.setItem(api.TROUBLE_SCORE_STORAGE_KEY, JSON.stringify({ 'n:60': 3 }));
+      const scores = api.loadTroubleScores();
+      return { entry: scores['n:60'], weight: api.troubleWeight(scores, 'n:60') };
+    });
+    expect(result.entry).toEqual({ score: 3, lastMissAt: null });
+    expect(result.weight).toBe(3); // usable immediately, not blocked by a cooldown it has no record of
+  });
+
+  test('buildDrillQueue excludes on-cooldown entries entirely, not just de-weights them', async ({ page }) => {
+    await page.goto('/index.html');
+    const midis = await page.evaluate(() => {
+      const api = window.__primavista;
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const scores = {
+        'n:60': { score: 100, lastMissAt: Date.now() }, // missed today — excluded
+        'n:61': { score: 1, lastMissAt: yesterday.getTime() }, // missed yesterday — eligible
+      };
+      return api.buildDrillQueue(scores).map((item) => item.midi);
+    });
+    expect(midis).toEqual([61]);
+  });
+
+  // End-to-end: a miss recorded live in a session, then a fresh session
+  // started right after, does not get boosted (still today) — but does
+  // once the miss is backdated to an earlier day, matching how buildQueue
+  // actually reads localStorage through recordAttemptOutcome/troubleWeight
+  // in real play, not just via directly-constructed scores objects.
+  test('a note missed earlier today is not over-selected in a fresh session; the same note missed yesterday is', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      for (let i = 0; i < 500; i++) api.recordAttemptOutcome([60], false); // score = 500, missed today
+    });
+    const todayCount = await page.evaluate(() => {
+      const api = window.__primavista;
+      const scores = api.loadTroubleScores();
+      let count = 0;
+      for (let i = 0; i < 300; i++) if (api.pickRandomNote(null, scores) === 60) count += 1;
+      return count;
+    });
+    expect(todayCount).toBeLessThan(60); // roughly uniform, not boosted
+
+    await page.evaluate(() => {
+      const api = window.__primavista;
+      const scores = api.loadTroubleScores();
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      scores['n:60'].lastMissAt = yesterday.getTime();
+      api.saveTroubleScores(scores);
+    });
+    const yesterdayCount = await page.evaluate(() => {
+      const api = window.__primavista;
+      const scores = api.loadTroubleScores();
+      let count = 0;
+      for (let i = 0; i < 300; i++) if (api.pickRandomNote(null, scores) === 60) count += 1;
+      return count;
+    });
+    expect(yesterdayCount).toBeGreaterThan(100); // now boosted, same as the pre-cooldown-feature "favors" test
+  });
+});
+
 test.describe('"Drill my weak spots" session mode (SPEC.md v7)', () => {
-  test('is disabled with no trouble scores and enabled once one is recorded', async ({ page }) => {
+  test('is disabled with no trouble scores, stays disabled while a miss is on cooldown, enables once it is not', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('#drill-weak-spots-btn')).toBeDisabled();
 
     await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+    // A same-day miss is on cooldown (see "spaced repetition" below) —
+    // not yet drillable, even though a trouble score now exists.
+    await expect(page.locator('#drill-weak-spots-btn')).toBeDisabled();
 
+    await recordMissesOnEarlierDay(page, [[60]]);
     await expect(page.locator('#drill-weak-spots-btn')).toBeEnabled();
   });
 
   test('builds a session made only of items with a recorded trouble score', async ({ page }) => {
     await page.goto('/index.html');
-    await page.evaluate(() => {
-      const api = window.__primavista;
-      api.recordAttemptOutcome([60], false); // n:60
-      api.recordAttemptOutcome([65, 66], false); // i:65-66
-    });
+    await recordMissesOnEarlierDay(page, [[60], [65, 66]]); // n:60, i:65-66
 
     await page.locator('#drill-weak-spots-btn').click();
 
@@ -1541,12 +1728,13 @@ test.describe('"Drill my weak spots" session mode (SPEC.md v7)', () => {
 
   test('caps the drill queue at SESSION_LENGTH even with more weak spots recorded', async ({ page }) => {
     await page.goto('/index.html');
-    await page.evaluate(() => {
+    const midisList = await page.evaluate(() => {
       const api = window.__primavista;
-      for (let i = 0; i < api.SESSION_LENGTH + 10; i++) {
-        api.recordAttemptOutcome([api.MIN_MIDI_NOTE + i], false);
-      }
+      const list = [];
+      for (let i = 0; i < api.SESSION_LENGTH + 10; i++) list.push([api.MIN_MIDI_NOTE + i]);
+      return list;
     });
+    await recordMissesOnEarlierDay(page, midisList);
 
     await page.locator('#drill-weak-spots-btn').click();
 
@@ -1556,7 +1744,7 @@ test.describe('"Drill my weak spots" session mode (SPEC.md v7)', () => {
 
   test('ends with a summary sized to the drill length, not the fixed 25', async ({ page }) => {
     await page.goto('/index.html');
-    await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+    await recordMissesOnEarlierDay(page, [[60]]);
     await page.locator('#drill-weak-spots-btn').click();
 
     const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
@@ -1570,7 +1758,7 @@ test.describe('"Drill my weak spots" session mode (SPEC.md v7)', () => {
 
   test('"Play again" after a drill session starts another drill session', async ({ page }) => {
     await page.goto('/index.html');
-    await page.evaluate(() => window.__primavista.recordAttemptOutcome([60], false));
+    await recordMissesOnEarlierDay(page, [[60]]);
     await page.locator('#drill-weak-spots-btn').click();
 
     const targetMidi = await page.evaluate(() => window.__primavista.session.current.midi);
@@ -1624,7 +1812,7 @@ test.describe('"Drill my weak spots" session mode (SPEC.md v7)', () => {
       const api = window.__primavista;
       const scores = {};
       for (let i = 0; i < api.SESSION_LENGTH + 5; i++) {
-        scores[`n:${api.MIN_MIDI_NOTE + i}`] = i; // ascending scores, 0 through 29
+        scores[`n:${api.MIN_MIDI_NOTE + i}`] = { score: i, lastMissAt: null }; // ascending scores, 0 through 29
       }
       const queue = api.buildDrillQueue(scores);
       const queuedMidis = new Set(queue.map((item) => item.midi));
